@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Сопроводительное письмо</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 {
+      color: #007bff;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 10px;
+    }
+    .cover-letter {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid #007bff;
+      white-space: pre-wrap;
+      font-size: 16px;
+      margin: 20px 0;
+    }
+    .actions {
+      margin-top: 30px;
+      text-align: center;
+    }
+    button {
+      padding: 12px 24px;
+      margin: 0 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button.secondary {
+      background: #6c757d;
+    }
+    button.secondary:hover {
+      background: #545b62;
+    }
+    .loading {
+      text-align: center;
+      color: #666;
+      font-style: italic;
+    }
+    .error {
+      color: #dc3545;
+      background: #f8d7da;
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid #f5c6cb;
+    }
+  </style>
+</head>
+<body>
+  <h1>Сопроводительное письмо</h1>
+  
+  <div id="content">
+    <div class="loading">Загрузка сопроводительного письма...</div>
+  </div>
+  
+  <div class="actions">
+    <button id="copyBtn" onclick="copyToClipboard()">Копировать</button>
+    <button id="printBtn" onclick="window.print()">Печать</button>
+    <button id="closeBtn" onclick="window.close()" class="secondary">Закрыть</button>
+  </div>
+
+  <script>
+    // Загружаем сопроводительное письмо с бэкенда
+    document.addEventListener('DOMContentLoaded', async () => {
+      const contentDiv = document.getElementById('content');
+      
+      try {
+        console.log('Loading cover letter from backend...');
+        
+        // Получаем URL бэкенда из настроек расширения
+        const { backendUrl = "http://localhost:3000" } = await chrome.storage.sync.get("backendUrl");
+        
+        const response = await fetch(`${backendUrl}/openai/latest-cover-letter`);
+        console.log('Backend response:', response);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Parsed data:', data);
+        
+        if (data.success && data.content) {
+          console.log('Using content field:', data.content);
+          contentDiv.innerHTML = `<div class="cover-letter">${data.content}</div>`;
+        } else {
+          throw new Error(data.error || 'Неверный формат данных');
+        }
+        
+      } catch (error) {
+        console.error('Error loading cover letter:', error);
+        contentDiv.innerHTML = '<div class="error">Ошибка при загрузке сопроводительного письма: ' + error.message + '</div>';
+      }
+    });
+
+    function copyToClipboard() {
+      const coverLetterElement = document.querySelector('.cover-letter');
+      if (coverLetterElement) {
+        const text = coverLetterElement.textContent;
+        
+        navigator.clipboard.writeText(text).then(() => {
+          const copyBtn = document.getElementById('copyBtn');
+          const originalText = copyBtn.textContent;
+          copyBtn.textContent = 'Скопировано!';
+          copyBtn.style.background = '#28a745';
+          
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.style.background = '#007bff';
+          }, 2000);
+        }).catch(err => {
+          console.error('Failed to copy text: ', err);
+          alert('Не удалось скопировать текст');
+        });
+      }
+    }
+  </script>
+</body>
+</html>

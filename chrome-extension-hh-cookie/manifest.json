@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "HH Job Assistant",
+  "version": "1.0.0",
+  "description": "Автоматическое сохранение резюме и генерация сопроводительных писем для hh.ru",
+  "permissions": [
+    "cookies",
+    "activeTab",
+    "storage",
+    "notifications",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.hh.ru/*",
+    "https://*.spb.hh.ru/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "HH Job Assistant"
+  },
+  "options_page": "options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["cover-letter.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
+
+

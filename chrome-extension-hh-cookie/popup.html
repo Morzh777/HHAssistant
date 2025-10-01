@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 400px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+    h1 {
+      font-size: 16px;
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    .status {
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+    .success {
+      color: #28a745;
+    }
+    .error {
+      color: #dc3545;
+    }
+    .info {
+      font-size: 11px;
+      color: #999;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <h1>HH Job Assistant</h1>
+  
+          <button id="saveResume">Сохранить резюме</button>
+  <button id="resetResume" style="background: #dc3545; color: white;">Сбросить резюме</button>
+  <button id="testNotification">Тест уведомлений</button>
+  <button id="generateCoverLetter">Создать сопроводительное письмо</button>
+  
+  <div id="status" class="status"></div>
+  
+  <div id="coverLetterContainer" style="display: none; margin-top: 20px;">
+    <h3>Сопроводительное письмо:</h3>
+    <div id="coverLetterContent" style="background: #f5f5f5; padding: 15px; border-radius: 5px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.4;"></div>
+    <div style="margin-top: 10px;">
+      <button id="copyCoverLetter" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Копировать</button>
+      <button id="closeCoverLetter" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Закрыть</button>
+    </div>
+  </div>
+  
+  <div class="info">
+    <strong>Автоматическое сохранение:</strong><br>
+    При переходе на страницу вакансии информация автоматически сохраняется на бэкенд в папку data/vacancies/
+    <br><br>
+            <strong>Сохранение резюме:</strong><br>
+            Зайдите на hh.ru, авторизуйтесь, откройте свое резюме, затем нажмите кнопку выше для сохранения резюме на бэкенд.
+            <br><br>
+            <strong>Сброс резюме:</strong><br>
+            Удаляет все сохраненные файлы резюме для обновления данных.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
