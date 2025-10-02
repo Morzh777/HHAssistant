@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resetButton = document.getElementById('resetResume');
   const testButton = document.getElementById('testNotification');
   const coverLetterButton = document.getElementById('generateCoverLetter');
+  const analyzeVacancyButton = document.getElementById('analyzeVacancy');
   const statusDiv = document.getElementById('status');
 
   // Получаем текущую вкладку
@@ -35,6 +36,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Отключаем кнопку генерации сопроводительного письма
     coverLetterButton.disabled = true;
     coverLetterButton.textContent = "Нужна вакансия hh.ru";
+    
+    // Отключаем кнопку анализа вакансии
+    analyzeVacancyButton.disabled = true;
+    analyzeVacancyButton.textContent = "Нужна вакансия hh.ru";
     return;
   }
 
@@ -48,13 +53,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusDiv.textContent = "Откройте страницу своего резюме";
     statusDiv.className = "status error";
     
-    // Если мы на странице вакансии - разрешаем создание сопроводительного письма
+    // Если мы на странице вакансии - разрешаем создание сопроводительного письма и анализ
     if (tab.url.includes('/vacancy/')) {
       coverLetterButton.disabled = false;
       coverLetterButton.textContent = "Создать сопроводительное письмо";
+      
+      analyzeVacancyButton.disabled = false;
+      analyzeVacancyButton.textContent = "Анализ вакансии 🔍";
     } else {
       coverLetterButton.disabled = true;
       coverLetterButton.textContent = "Нужна страница вакансии";
+      
+      analyzeVacancyButton.disabled = true;
+      analyzeVacancyButton.textContent = "Нужна страница вакансии";
     }
   }
 
@@ -218,6 +229,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Обработчик анализа вакансии
+  analyzeVacancyButton.addEventListener('click', async () => {
+    analyzeVacancyButton.disabled = true;
+    analyzeVacancyButton.textContent = "Анализирую...";
+    statusDiv.textContent = "Анализирую вакансию на токсичность...";
+    statusDiv.className = "status";
+
+    try {
+      // Получаем ID вакансии с текущей страницы
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentTab = tabs[0];
+      
+      if (!currentTab.url || !currentTab.url.includes('hh.ru/vacancy/')) {
+        throw new Error('Откройте страницу вакансии на hh.ru');
+      }
+
+      // Извлекаем ID вакансии из URL
+      const urlMatch = currentTab.url.match(/\/vacancy\/(\d+)/);
+      if (!urlMatch) {
+        throw new Error('Не удалось определить ID вакансии');
+      }
+      
+      const vacancyId = urlMatch[1];
+      console.log('Analyzing vacancy ID:', vacancyId);
+
+      // Проверяем есть ли уже анализ для этой вакансии
+      const { backendUrl = "http://localhost:3000" } = await chrome.storage.sync.get("backendUrl");
+      
+      try {
+        const response = await fetch(`${backendUrl}/vacancy-analysis/${vacancyId}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.success && data.data) {
+            // Анализ уже существует - показываем его
+            statusDiv.textContent = "✅ Найден существующий анализ!";
+            statusDiv.className = "status success";
+            
+            await displayVacancyAnalysis(data.data);
+            return;
+          }
+        }
+      } catch (error) {
+        console.log('No existing analysis found, will generate new one:', error);
+      }
+
+      // Анализа нет - генерируем новый
+      analyzeVacancyButton.textContent = "Генерирую анализ...";
+      statusDiv.textContent = "Генерирую новый анализ вакансии...";
+      
+      const analysisResponse = await fetch(`${backendUrl}/vacancy-analysis/analyze/${vacancyId}`, {
+        method: 'POST'
+      });
+      
+      if (!analysisResponse.ok) {
+        const errorText = await analysisResponse.text();
+        throw new Error(`HTTP ${analysisResponse.status}: ${errorText}`);
+      }
+      
+      const analysisData = await analysisResponse.json();
+      console.log('Analysis response:', analysisData);
+      
+      if (analysisData.success && analysisData.data) {
+        statusDiv.textContent = "✅ Анализ вакансии завершен!";
+        statusDiv.className = "status success";
+        
+        await displayVacancyAnalysis(analysisData.data);
+        
+      } else {
+        throw new Error(analysisData.error || 'Неизвестная ошибка');
+      }
+    } catch (error) {
+      console.error("Vacancy analysis failed:", error);
+      statusDiv.textContent = `❌ Ошибка: ${error.message}`;
+      statusDiv.className = "status error";
+    } finally {
+      analyzeVacancyButton.disabled = false;
+      analyzeVacancyButton.textContent = "Анализ вакансии 🔍";
+    }
+  });
+
   // Функция для отображения письма в popup
   async function displayCoverLetter(vacancyId) {
     try {
@@ -255,6 +348,99 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
       console.error('Error loading cover letter:', error);
       statusDiv.textContent = `❌ Ошибка загрузки письма: ${error.message}`;
+      statusDiv.className = "status error";
+    }
+  }
+
+  // Функция для отображения анализа вакансии в popup
+  async function displayVacancyAnalysis(analysisData) {
+    try {
+      const container = document.getElementById('vacancyAnalysisContainer');
+      const recommendationDiv = document.getElementById('analysisRecommendation');
+      const summaryDiv = document.getElementById('analysisSummary');
+      const redFlagsList = document.getElementById('redFlagsList');
+      const positivesList = document.getElementById('positivesList');
+      const toxicityScore = document.getElementById('toxicityScore');
+      const salaryAdequacy = document.getElementById('salaryAdequacy');
+      const experienceMatch = document.getElementById('experienceMatch');
+      
+      // Настройка рекомендации с цветом
+      const recommendationConfig = {
+        apply: { text: '✅ Рекомендуется откликнуться', color: '#d4edda', borderColor: '#28a745' },
+        caution: { text: '⚠️ Откликаться с осторожностью', color: '#fff3cd', borderColor: '#ffc107' },
+        avoid: { text: '❌ Не рекомендуется', color: '#f8d7da', borderColor: '#dc3545' }
+      };
+      
+      const config = recommendationConfig[analysisData.recommendation] || recommendationConfig.caution;
+      recommendationDiv.textContent = config.text;
+      recommendationDiv.style.backgroundColor = config.color;
+      recommendationDiv.style.border = `2px solid ${config.borderColor}`;
+      
+      // Резюме
+      summaryDiv.innerHTML = `<strong>Резюме:</strong> ${analysisData.summary}`;
+      
+      // Красные флаги
+      redFlagsList.innerHTML = '';
+      if (analysisData.redFlags && analysisData.redFlags.length > 0) {
+        analysisData.redFlags.forEach(flag => {
+          const li = document.createElement('li');
+          li.textContent = flag;
+          li.style.color = '#dc3545';
+          redFlagsList.appendChild(li);
+        });
+      } else {
+        const li = document.createElement('li');
+        li.textContent = 'Красные флаги не обнаружены';
+        li.style.color = '#28a745';
+        redFlagsList.appendChild(li);
+      }
+      
+      // Плюсы
+      positivesList.innerHTML = '';
+      if (analysisData.positives && analysisData.positives.length > 0) {
+        analysisData.positives.forEach(positive => {
+          const li = document.createElement('li');
+          li.textContent = positive;
+          li.style.color = '#28a745';
+          positivesList.appendChild(li);
+        });
+      } else {
+        const li = document.createElement('li');
+        li.textContent = 'Особые плюсы не выявлены';
+        li.style.color = '#6c757d';
+        positivesList.appendChild(li);
+      }
+      
+      // Детали
+      toxicityScore.textContent = analysisData.toxicityScore;
+      toxicityScore.style.color = analysisData.toxicityScore <= 3 ? '#28a745' : 
+                                  analysisData.toxicityScore <= 6 ? '#ffc107' : '#dc3545';
+      
+      const salaryLabels = {
+        adequate: 'Адекватная',
+        low: 'Низкая',
+        high: 'Высокая',
+        not_specified: 'Не указана'
+      };
+      salaryAdequacy.textContent = salaryLabels[analysisData.salaryAdequacy] || 'Неизвестно';
+      
+      const experienceLabels = {
+        junior_friendly: 'Подходит для джуниоров',
+        requires_experience: 'Требует опыт',
+        unrealistic: 'Нереалистичные требования'
+      };
+      experienceMatch.textContent = experienceLabels[analysisData.experienceMatch] || 'Неизвестно';
+      
+      container.style.display = 'block';
+      
+      // Добавляем обработчик для кнопки закрытия
+      document.getElementById('closeVacancyAnalysis').onclick = () => {
+        container.style.display = 'none';
+      };
+      
+    } catch (error) {
+      console.error('Error displaying vacancy analysis:', error);
+      statusDiv.textContent = `❌ Ошибка отображения анализа: ${error.message}`;
       statusDiv.className = "status error";
     }
   }

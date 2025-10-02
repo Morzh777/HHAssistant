@@ -1,4 +1,4 @@
-// @ts-nocheck - OpenAI API types are not fully compatible with TypeScript strict mode
+
 import dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -233,6 +233,43 @@ export class OpenAIService {
       }
     } catch (error) {
       this.logger.error('Ошибка при анализе резюме через OpenAI:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Универсальный метод для генерации текста через OpenAI
+   */
+  async generateText(
+    prompt: string,
+    systemPrompt: string,
+    config: any
+  ): Promise<string> {
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        ...(config.maxTokens && { max_tokens: config.maxTokens }),
+        ...(config.temperature !== undefined && { temperature: config.temperature }),
+      });
+
+      const firstChoice = completion.choices[0];
+      if (!firstChoice?.message?.content) {
+        throw new Error('Пустой ответ от OpenAI API');
+      }
+
+      return firstChoice.message.content;
+    } catch (error) {
+      this.logger.error('Ошибка генерации текста через OpenAI:', error);
       throw error;
     }
   }

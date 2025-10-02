@@ -58,6 +58,7 @@
   <button id="resetResume" style="background: #dc3545; color: white;">Сбросить резюме</button>
   <button id="testNotification">Тест уведомлений</button>
   <button id="generateCoverLetter">Создать сопроводительное письмо</button>
+  <button id="analyzeVacancy" style="background: #ffc107; color: black;">Анализ вакансии 🔍</button>
   
   <div id="status" class="status"></div>
   
@@ -67,6 +68,30 @@
     <div style="margin-top: 10px;">
       <button id="copyCoverLetter" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Копировать</button>
       <button id="closeCoverLetter" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Закрыть</button>
+    </div>
+  </div>
+
+  <div id="vacancyAnalysisContainer" style="display: none; margin-top: 20px;">
+    <h3>Анализ вакансии:</h3>
+    <div id="vacancyAnalysisContent" style="background: #f8f9fa; padding: 15px; border-radius: 5px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.4;">
+      <div id="analysisRecommendation" style="margin-bottom: 15px; padding: 10px; border-radius: 5px; font-weight: bold;"></div>
+      <div id="analysisSummary" style="margin-bottom: 15px;"></div>
+      <div id="analysisRedFlags" style="margin-bottom: 15px;">
+        <strong>🚩 Красные флаги:</strong>
+        <ul id="redFlagsList"></ul>
+      </div>
+      <div id="analysisPositives" style="margin-bottom: 15px;">
+        <strong>✅ Плюсы:</strong>
+        <ul id="positivesList"></ul>
+      </div>
+      <div id="analysisDetails" style="font-size: 12px; color: #666;">
+        <div>Токсичность: <span id="toxicityScore"></span>/10</div>
+        <div>Зарплата: <span id="salaryAdequacy"></span></div>
+        <div>Опыт: <span id="experienceMatch"></span></div>
+      </div>
+    </div>
+    <div style="margin-top: 10px;">
+      <button id="closeVacancyAnalysis" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Закрыть</button>
     </div>
   </div>
   
