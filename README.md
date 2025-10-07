@@ -250,7 +250,4 @@ npm run test:e2e
 ---
 
 **Сделано с ❤️ для упрощения поиска работы**
-
-
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/hhassistant?schema=public
-OPENAI_API_KEY=REDACTED_OPENAI_KEY
+ 
