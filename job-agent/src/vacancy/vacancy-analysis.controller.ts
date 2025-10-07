@@ -2,6 +2,7 @@ import { Controller, Get, Post, Param, Body, Logger, HttpException, HttpStatus }
 import { VacancyAnalysisService } from './vacancy-analysis.service';
 import { VacancyStorageService } from './vacancy-storage.service';
 import type { VacancyAnalysisRequest, VacancyAnalysisResponse } from '../types/vacancy-analysis.types';
+import { ResumeService } from '../resume/resume.service';
 
 @Controller('vacancy-analysis')
 export class VacancyAnalysisController {
@@ -9,7 +10,8 @@ export class VacancyAnalysisController {
 
   constructor(
     private readonly vacancyAnalysisService: VacancyAnalysisService,
-    private readonly vacancyStorageService: VacancyStorageService
+    private readonly vacancyStorageService: VacancyStorageService,
+    private readonly resumeService: ResumeService,
   ) {}
 
   @Post('analyze/:vacancyId')
@@ -27,9 +29,19 @@ export class VacancyAnalysisController {
       }
       
       const vacancyData = vacancyResponse.data;
+      // Пытаемся подтянуть последнее проанализированное резюме (если есть)
+      let resumeData: any | undefined;
+      try {
+        const latest = await this.resumeService.getLatestResumeData();
+        resumeData = latest?.data;
+      } catch {}
 
-      // Анализируем вакансию
-      const analysis = await this.vacancyAnalysisService.analyzeVacancy(vacancyId, vacancyData);
+      // Анализируем вакансию с учетом резюме (если доступно)
+      const analysis = await this.vacancyAnalysisService.analyzeVacancy(
+        vacancyId,
+        vacancyData,
+        resumeData
+      );
       
       this.logger.log(`Analysis completed for vacancy ${vacancyId}, success: ${analysis.success}`);
       return analysis;

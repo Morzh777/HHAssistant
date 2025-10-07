@@ -1,62 +1,82 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import { PrismaService } from '../prisma/prisma.service';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { Vacancy } from '../types/vacancy.types';
 import { ApiResponse } from '../types/common.types';
 
 @Injectable()
 export class VacancyStorageService {
-  private readonly VACANCIES_DIR = path.join(
-    process.cwd(),
-    'job-agent',
-    'data',
-    'vacancies',
-  );
-
-  constructor() {
-    void this.ensureDirectoryExists();
-  }
-
-  private async ensureDirectoryExists(): Promise<void> {
-    try {
-      await fs.access(this.VACANCIES_DIR);
-    } catch {
-      await fs.mkdir(this.VACANCIES_DIR, { recursive: true });
-    }
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly embeddings: EmbeddingsService,
+  ) {}
 
   /**
    * Сохранение вакансии в JSON файл
    */
   async saveVacancy(vacancyData: Vacancy): Promise<ApiResponse<Vacancy>> {
     try {
-      // Добавляем метаданные
-      const enrichedData = {
-        ...vacancyData,
-        _metadata: {
-          savedAt: new Date().toISOString(),
-          source: 'chrome-extension',
-          ...vacancyData._metadata,
+      const now = new Date();
+      const saved = await this.prisma.vacancy.upsert({
+        where: { id: vacancyData.id },
+        create: {
+          id: vacancyData.id,
+          name: vacancyData.name,
+          description: (vacancyData as any).description ?? undefined,
+          salary: (vacancyData as any).salary ?? undefined,
+          employer: (vacancyData as any).employer ?? undefined,
+          area: (vacancyData as any).area ?? undefined,
+          experience: (vacancyData as any).experience ?? undefined,
+          employment: (vacancyData as any).employment ?? undefined,
+          schedule: (vacancyData as any).schedule ?? undefined,
+          keySkills: (vacancyData as any).key_skills ?? undefined,
+          professional: (vacancyData as any).professional_roles ?? undefined,
+          publishedAt: (vacancyData as any).published_at
+            ? new Date((vacancyData as any).published_at)
+            : undefined,
+          createdAt: now,
+          savedAt: now,
+          source: (vacancyData as any)._metadata?.source ?? 'chrome-extension',
+          raw: vacancyData as any,
         },
-      };
+        update: {
+          name: vacancyData.name,
+          description: (vacancyData as any).description ?? undefined,
+          salary: (vacancyData as any).salary ?? undefined,
+          employer: (vacancyData as any).employer ?? undefined,
+          area: (vacancyData as any).area ?? undefined,
+          experience: (vacancyData as any).experience ?? undefined,
+          employment: (vacancyData as any).employment ?? undefined,
+          schedule: (vacancyData as any).schedule ?? undefined,
+          keySkills: (vacancyData as any).key_skills ?? undefined,
+          professional: (vacancyData as any).professional_roles ?? undefined,
+          publishedAt: (vacancyData as any).published_at
+            ? new Date((vacancyData as any).published_at)
+            : undefined,
+          savedAt: now,
+          raw: vacancyData as any,
+        },
+      });
 
-      // Создаем имя файла
-      const filename = `vacancy_${vacancyData.id}_${new Date().toISOString().split('T')[0]}.json`;
-      const filePath = path.join(this.VACANCIES_DIR, filename);
-
-      // Сохраняем файл
-      await fs.writeFile(
-        filePath,
-        JSON.stringify(enrichedData, null, 2),
-        'utf-8',
-      );
+      // Try generate embedding for semantic search (best-effort)
+      try {
+        const sourceText = [
+          saved.name,
+          (saved.description as any) ?? '',
+          JSON.stringify(saved.keySkills ?? {}),
+        ]
+          .filter(Boolean)
+          .join('\n');
+        if (sourceText.trim().length > 0) {
+          await this.embeddings.storeVacancyEmbedding(saved.id, sourceText);
+        }
+      } catch {}
 
       return {
         success: true,
         message: 'Вакансия успешно сохранена',
-        vacancyId: vacancyData.id,
-        filename,
-        path: filePath,
+        vacancyId: saved.id,
+        path: 'db:vacancy',
       };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -72,57 +92,31 @@ export class VacancyStorageService {
    */
   async getVacancyList(): Promise<ApiResponse<Vacancy[]>> {
     try {
-      const files = await fs.readdir(this.VACANCIES_DIR);
-      const vacancyFiles = files.filter(
-        (file) => file.startsWith('vacancy_') && file.endsWith('.json'),
-      );
-
-      const vacancies: Array<{
-        id: string;
-        name: string;
-        employer?: string;
-        area?: string;
-        experience?: string;
-        salary?: any;
-        publishedAt?: string;
-        savedAt?: string;
-        filename: string;
-      }> = [];
-      for (const file of vacancyFiles) {
-        try {
-          const filePath = path.join(this.VACANCIES_DIR, file);
-          const content = await fs.readFile(filePath, 'utf-8');
-          const vacancy = JSON.parse(content) as Vacancy;
-
-          // Возвращаем только основную информацию для списка
-          vacancies.push({
-            id: vacancy.id,
-            name: vacancy.name,
-            employer: vacancy.employer?.name,
-            area: vacancy.area?.name,
-            experience: vacancy.experience?.name,
-            salary: vacancy.salary,
-            publishedAt: vacancy.published_at,
-            savedAt: vacancy._metadata?.savedAt,
-            filename: file,
-          });
-        } catch (error) {
-          console.error(`Error reading file ${file}:`, error);
-        }
-      }
-
-      // Сортируем по дате сохранения (новые сначала)
-      vacancies.sort((a, b) => {
-        const dateA = a.savedAt ? new Date(a.savedAt).getTime() : 0;
-        const dateB = b.savedAt ? new Date(b.savedAt).getTime() : 0;
-        return dateB - dateA;
+      const rows = await this.prisma.vacancy.findMany({
+        orderBy: { savedAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          employer: true,
+          area: true,
+          experience: true,
+          salary: true,
+          publishedAt: true,
+          savedAt: true,
+        },
       });
-
-      return {
-        success: true,
-        count: vacancies.length,
-        data: vacancies as unknown as Vacancy[],
-      };
+      // Приводим к ранее ожидаемому виду (частичному)
+      const data = rows.map((v) => ({
+        id: v.id,
+        name: v.name,
+        employer: (v.employer as any)?.name,
+        area: (v.area as any)?.name,
+        experience: (v.experience as any)?.name,
+        salary: v.salary as any,
+        published_at: v.publishedAt?.toISOString(),
+        _metadata: { savedAt: v.savedAt?.toISOString?.() },
+      })) as unknown as Vacancy[];
+      return { success: true, count: data.length, data };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new HttpException(
@@ -137,27 +131,14 @@ export class VacancyStorageService {
    */
   async getVacancy(vacancyId: string): Promise<ApiResponse<Vacancy>> {
     try {
-      const files = await fs.readdir(this.VACANCIES_DIR);
-      const vacancyFile = files.find(
-        (file) =>
-          file.startsWith(`vacancy_${vacancyId}_`) && file.endsWith('.json'),
-      );
-
-      if (!vacancyFile) {
+      const row = await this.prisma.vacancy.findUnique({ where: { id: vacancyId } });
+      if (!row) {
         throw new HttpException(
           `Вакансия с ID ${vacancyId} не найдена`,
           HttpStatus.NOT_FOUND,
         );
       }
-
-      const filePath = path.join(this.VACANCIES_DIR, vacancyFile);
-      const content = await fs.readFile(filePath, 'utf-8');
-      const vacancy = JSON.parse(content) as Vacancy;
-
-      return {
-        success: true,
-        data: vacancy,
-      };
+      return { success: true, data: (row.raw as any) ?? (row as any) };
     } catch (error: unknown) {
       if (error instanceof HttpException) {
         throw error;

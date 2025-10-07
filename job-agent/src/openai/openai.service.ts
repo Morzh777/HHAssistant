@@ -22,13 +22,17 @@ import {
   FILE_CONTENT_TEMPLATES,
   CONSTANTS,
 } from '../config/openai.config';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
   private readonly openai: OpenAI;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     // Пробуем получить API ключ из разных источников
     const apiKey = process.env.OPENAI_API_KEY;
 
@@ -274,6 +278,23 @@ export class OpenAIService {
     }
   }
 
+  async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      const response = await this.openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+      });
+      const embedding = response.data?.[0]?.embedding as unknown as number[];
+      if (!embedding || !Array.isArray(embedding)) {
+        throw new Error('Empty embedding received');
+      }
+      return embedding;
+    } catch (error) {
+      this.logger.error('Ошибка генерации эмбеддинга через OpenAI:', error);
+      throw error;
+    }
+  }
+
   /**
    * Проверяет доступность OpenAI API
    */
@@ -507,6 +528,28 @@ export class OpenAIService {
 
       await fs.writeFile(filePath, fileContent, 'utf-8');
       this.logger.log(`Сопроводительное письмо сохранено: ${fileName}`);
+
+      // Save to DB as well (for API access) and generate embedding
+      try {
+        const generatedAt = new Date();
+        await this.prisma.coverLetter.create({
+          data: {
+            id: undefined as unknown as string, // let default cuid() generate in DB if mapped; else prisma will handle
+            vacancyId: vacancyData?.id || 'unknown',
+            content: coverLetter,
+            generatedAt,
+            fileName,
+          },
+        });
+        // embedding from the letter text
+        const emb = await this.generateEmbedding(coverLetter);
+        const vectorLiteral = `[${emb
+          .map((v) => (Number.isFinite(v) ? Number(v) : 0))
+          .join(',')}]`;
+        await this.prisma.$executeRaw`UPDATE "CoverLetter" SET embedding = ${vectorLiteral}::vector WHERE "vacancyId" = ${vacancyData?.id || 'unknown'} AND "generatedAt" = ${generatedAt}`;
+      } catch (e) {
+        this.logger.warn('Не удалось сохранить эмбеддинг/письмо в БД', e);
+      }
     } catch (error) {
       this.logger.error(
         'Ошибка при сохранении сопроводительного письма:',

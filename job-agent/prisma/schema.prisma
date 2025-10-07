@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Vector type via pgvector extension. Prisma currently treats it as Unsupported.
+// Ensure the extension is enabled in the database (see docker-compose and migration).
+
+model UserResume {
+  id           String   @id @default(cuid())
+  resumeId     String   @unique
+  html         String?
+  analysisJson Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // Optional embedding of the resume text for semantic search
+  embedding    Unsupported("vector(1536)")?
+}
+
+model Vacancy {
+  id           String   @id // hh.ru vacancy id
+  name         String
+  description  String?
+  salary       Json?
+  employer     Json?
+  area         Json?
+  experience   Json?
+  employment   Json?
+  schedule     Json?
+  keySkills    Json?
+  professional Json?
+  publishedAt  DateTime?
+  createdAt    DateTime @default(now())
+  savedAt      DateTime @default(now())
+  source       String   @default("chrome-extension")
+  raw          Json?
+  // Optional embedding of vacancy description
+  embedding    Unsupported("vector(1536)")?
+
+  CoverLetters       CoverLetter[]
+  VacancyAnalyses    VacancyAnalysis[]
+
+  @@index([name], name: "Vacancy_name_idx")
+}
+
+model CoverLetter {
+  id           String   @id @default(cuid())
+  vacancyId    String
+  content      String
+  generatedAt  DateTime @default(now())
+  fileName     String?
+  embedding    Unsupported("vector(1536)")?
+
+  Vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+}
+
+model VacancyAnalysis {
+  id           String   @id @default(cuid())
+  vacancyId    String
+  analyzedAt   DateTime @default(now())
+  toxicityScore Int
+  recommendation String // apply | avoid | caution
+  redFlags      Json
+  positives     Json
+  summary       String
+  salaryAdequacy String // adequate | low | high | not_specified
+  experienceMatch String // junior_friendly | requires_experience | unrealistic
+  raw           Json?
+  embedding     Unsupported("vector(1536)")?
+
+  Vacancy Vacancy @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+}
+
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// client generator configured at top; single datasource is defined above

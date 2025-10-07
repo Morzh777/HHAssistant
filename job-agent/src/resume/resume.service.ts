@@ -1,15 +1,22 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
-import * as fs from 'fs/promises';
+// no file storage; keep fs import out
 import { OpenAIService } from '../openai/openai.service';
 import { REGEX_PATTERNS } from '../config/openai.config';
+import { PrismaService } from '../prisma/prisma.service';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
+import type { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ResumeService {
   private readonly USER_AGENT =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 
-  constructor(private readonly openaiService: OpenAIService) {}
+  constructor(
+    private readonly openaiService: OpenAIService,
+    private readonly prisma: PrismaService,
+    private readonly embeddings: EmbeddingsService,
+  ) {}
 
   private async getCookies(): Promise<string | undefined> {
     try {
@@ -22,11 +29,10 @@ export class ResumeService {
     }
   }
 
-  async parseResume(url: string): Promise<unknown> {
+  async parseResume(url: string): Promise<string> {
     try {
       const html = await this.fetchHtmlWithCookies(url);
-      await this.saveHtml(html, url);
-      return { message: 'HTML saved successfully', url };
+      return html;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new HttpException(
@@ -38,7 +44,6 @@ export class ResumeService {
 
   async getHtml(url: string): Promise<string> {
     const html = await this.fetchHtmlWithCookies(url);
-    await this.saveHtml(html, url);
     return html;
   }
 
@@ -84,7 +89,7 @@ export class ResumeService {
   async analyzeResumeWithAI(url: string): Promise<any> {
     try {
       const html = await this.fetchHtmlWithCookies(url);
-      await this.saveHtml(html, url);
+      // HTML НЕ сохраняем
 
       // Проверяем доступность OpenAI API
       const isAvailable = await this.openaiService.checkApiAvailability();
@@ -101,9 +106,9 @@ export class ResumeService {
       // Извлекаем ID резюме из URL для сохранения
       const resumeIdMatch = url.match(REGEX_PATTERNS.RESUME_ID);
       const resumeId = resumeIdMatch ? resumeIdMatch[1] : 'unknown';
-      
-      // Сохраняем результат анализа
-      await this.saveAnalysis(analysis, resumeId);
+
+      // Сохраняем только результат анализа в БД и считаем эмбеддинг по анализу (best-effort)
+      await this.saveAnalysisToDb(resumeId, analysis);
 
       return {
         message: 'Резюме успешно проанализировано через OpenAI',
@@ -124,28 +129,13 @@ export class ResumeService {
    */
   async analyzeSavedResume(resumeId: string): Promise<any> {
     try {
-      const html = await this.loadHtml(resumeId);
-
-      // Проверяем доступность OpenAI API
-      const isAvailable = await this.openaiService.checkApiAvailability();
-      if (!isAvailable) {
-        throw new HttpException(
-          'OpenAI API недоступен. Проверьте API ключ.',
-          HttpStatus.SERVICE_UNAVAILABLE,
-        );
-      }
-
-      // Анализируем полный HTML через OpenAI
-      const analysis = await this.openaiService.analyzeResumeHtml(html);
-
-      // Сохраняем результат анализа
-      await this.saveAnalysis(analysis, resumeId);
-
-      return {
-        message: 'Сохраненное резюме успешно проанализировано через OpenAI',
-        resumeId,
-        analysis,
-      };
+      void resumeId; // explicitly mark param as used
+      await Promise.resolve();
+      // HTML не сохраняем — повторный анализ сохраненного HTML не поддерживается
+      throw new HttpException(
+        'Повторный анализ сохраненного HTML не поддерживается (HTML не хранится). Запустите анализ по URL.',
+        HttpStatus.NOT_IMPLEMENTED,
+      );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new HttpException(
@@ -160,37 +150,19 @@ export class ResumeService {
    */
   async getLatestResumeData(): Promise<any> {
     try {
-      const analysisDir = `${process.cwd()}/job-agent/data/analysis`;
-      const files = await fs.readdir(analysisDir);
-
-      if (files.length === 0) {
+      const row = await this.prisma.userResume.findFirst({
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!row) {
         throw new HttpException(
           'Данные резюме не найдены. Сначала проанализируйте резюме.',
           HttpStatus.NOT_FOUND,
         );
       }
-
-      // Получаем самый новый файл
-      const latestFile = files
-        .filter((file) => file.endsWith('.json'))
-        .sort()
-        .pop();
-
-      if (!latestFile) {
-        throw new HttpException(
-          'Файлы анализа не найдены.',
-          HttpStatus.NOT_FOUND,
-        );
-      }
-
-      const filePath = `${analysisDir}/${latestFile}`;
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      const resumeData = JSON.parse(fileContent);
-
       return {
         success: true,
-        data: resumeData,
-        file: latestFile,
+        data: row.analysisJson,
+        file: row.resumeId,
         loadedAt: new Date().toISOString(),
       };
     } catch (error: unknown) {
@@ -205,54 +177,44 @@ export class ResumeService {
   /**
    * Получает структуру сохраненного HTML документа
    */
-  async getResumeStructure(resumeId: string): Promise<any> {
+  // getResumeStructure удален: HTML не сохраняется
+
+  // HTML не сохраняем
+
+  // Загрузка HTML не поддерживается, так как он не сохраняется
+
+  private async saveAnalysisToDb(
+    resumeId: string,
+    analysis: unknown,
+  ): Promise<void> {
     try {
-      const html = await this.loadHtml(resumeId);
-
-      // Извлекаем основную информацию из HTML без OpenAI
-      const structure = this.extractBasicStructure(html);
-
-      return {
-        message: 'Структура резюме извлечена',
-        resumeId,
-        structure,
-      };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new HttpException(
-        `Resume structure extraction error: ${message}`,
-        HttpStatus.BAD_REQUEST,
-      );
+      const analysisJson = JSON.parse(JSON.stringify(analysis)) as Prisma.InputJsonValue;
+      const saved = await this.prisma.userResume.upsert({
+        where: { resumeId },
+        create: {
+          resumeId,
+          analysisJson,
+        },
+        update: {
+          analysisJson,
+        },
+      });
+      // best-effort embedding
+      try {
+        const embSource = JSON.stringify(analysis ?? {});
+        if (embSource && embSource.length > 0) {
+          const emb = await this.embeddings.generate(embSource);
+          const vectorLiteral = `[${emb.map((v) => (Number.isFinite(v) ? Number(v) : 0)).join(',')}]`;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          await this.prisma.$executeRaw`UPDATE "UserResume" SET embedding = ${vectorLiteral}::vector WHERE id = ${saved.id}`;
+        }
+      } catch {
+        // ignore embedding errors
+      }
+    } catch (error) {
+      // Логируем, но не валим основной процесс
+      console.warn('Failed to save resume analysis to DB:', error);
     }
-  }
-
-  private async saveHtml(html: string, url: string): Promise<void> {
-    const id = url.split('/').pop() || 'resume';
-    const dir = `${process.cwd()}/job-agent/data/resumes`;
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(`${dir}/${id}.html`, html, 'utf-8');
-  }
-
-  private async loadHtml(resumeId: string): Promise<string> {
-    const filePath = `${process.cwd()}/job-agent/data/resumes/${resumeId}.html`;
-    try {
-      return await fs.readFile(filePath, 'utf-8');
-    } catch {
-      throw new HttpException(
-        `Резюме с ID ${resumeId} не найдено`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
-  }
-
-  private async saveAnalysis(analysis: any, identifier: string): Promise<void> {
-    const dir = `${process.cwd()}/job-agent/data/analysis`;
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(
-      `${dir}/${identifier}.json`,
-      JSON.stringify(analysis, null, 2),
-      'utf-8',
-    );
   }
 
   private extractBasicStructure(html: string): any {

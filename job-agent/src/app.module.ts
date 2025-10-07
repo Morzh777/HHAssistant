@@ -7,6 +7,8 @@ import { ResumeModule } from './resume/resume.module';
 import { AuthModule } from './auth/auth.module';
 import { OpenAIModule } from './openai/openai.module';
 import { CoverLetterModule } from './cover-letter/cover-letter.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { EmbeddingsModule } from './embeddings/embeddings.module';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { CoverLetterModule } from './cover-letter/cover-letter.module';
     ResumeModule, 
     AuthModule, 
     OpenAIModule,
-    CoverLetterModule
+    CoverLetterModule,
+    PrismaModule,
+    EmbeddingsModule
   ],
 })
 export class AppModule implements NestModule {
