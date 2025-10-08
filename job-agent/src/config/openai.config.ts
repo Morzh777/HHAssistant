@@ -35,6 +35,12 @@ export const OPENAI_CONFIGS = {
     model: 'gpt-5-mini',
     // GPT-5 mini не поддерживает кастомную температуру, только default (1)
   } as OpenAIConfig,
+
+  // Конфигурация для эмбеддингов (pgvector)
+  EMBEDDINGS: {
+    model: 'text-embedding-3-small',
+    temperature: 0,
+  } as OpenAIConfig,
 } as const;
 
 // Системные промпты

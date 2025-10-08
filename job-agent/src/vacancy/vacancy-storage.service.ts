@@ -1,5 +1,5 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from 'nestjs-prisma';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { Vacancy } from '../types/vacancy.types';
 import { ApiResponse } from '../types/common.types';
@@ -131,7 +131,9 @@ export class VacancyStorageService {
    */
   async getVacancy(vacancyId: string): Promise<ApiResponse<Vacancy>> {
     try {
-      const row = await this.prisma.vacancy.findUnique({ where: { id: vacancyId } });
+      const row = await this.prisma.vacancy.findUnique({
+        where: { id: vacancyId },
+      });
       if (!row) {
         throw new HttpException(
           `Вакансия с ID ${vacancyId} не найдена`,
@@ -149,5 +151,58 @@ export class VacancyStorageService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Ранжирование вакансий по эмбеддингам относительно последнего резюме
+   */
+  async rankByLatestResume(
+    limit = 20,
+  ): Promise<ApiResponse<Array<{ id: string; name: string; score: number }>>> {
+    try {
+      // Убиваем сложный SQL из кода: обеспечиваем функцию в БД и вызываем её
+      await this.ensureRankingFunction();
+
+      const rows = await this.prisma.$queryRaw<
+        Array<{ id: string; name: string; score: number }>
+      >`SELECT * FROM rank_vacancies(${limit}::integer)`;
+
+      return {
+        success: true,
+        count: rows.length,
+        data: rows,
+      } as unknown as ApiResponse<
+        Array<{ id: string; name: string; score: number }>
+      >;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new HttpException(
+        `Ошибка ранжирования вакансий: ${message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+  
+  // Создаёт/обновляет SQL-функцию ранжирования в БД (инкапсуляция pgvector логики)
+  private async ensureRankingFunction(): Promise<void> {
+    await this.prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION rank_vacancies(limit_count integer)
+      RETURNS TABLE (id text, name text, score double precision)
+      LANGUAGE sql
+      AS $$
+      WITH latest_resume AS (
+        SELECT embedding
+        FROM "UserResume"
+        WHERE embedding IS NOT NULL
+        ORDER BY "updatedAt" DESC
+        LIMIT 1
+      )
+      SELECT v."id"::text, v."name"::text, (1 - (v.embedding <=> lr.embedding))::float AS score
+      FROM "Vacancy" v, latest_resume lr
+      WHERE v.embedding IS NOT NULL
+      ORDER BY v.embedding <=> lr.embedding ASC
+      LIMIT limit_count;
+      $$;
+    `);
   }
 }

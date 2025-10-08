@@ -8,10 +8,15 @@ import { VacancyService } from './vacancy.service';
 import { VacancyAnalysisController } from './vacancy-analysis.controller';
 import { VacancyAnalysisService } from './vacancy-analysis.service';
 import { VacancyStorageService } from './vacancy-storage.service';
+import { VacancyStorageController } from './vacancy-storage.controller';
 
 @Module({
   imports: [OpenAIModule, PrismaModule, EmbeddingsModule, ResumeModule],
-  controllers: [VacancyController, VacancyAnalysisController],
+  controllers: [
+    VacancyController,
+    VacancyAnalysisController,
+    VacancyStorageController,
+  ],
   providers: [VacancyService, VacancyAnalysisService, VacancyStorageService],
   exports: [VacancyService, VacancyAnalysisService, VacancyStorageService],
 })

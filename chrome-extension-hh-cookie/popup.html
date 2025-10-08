@@ -4,76 +4,91 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 400px;
-      padding: 20px;
+      width: 560px;
+      padding: 18px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
+      background: #0f1115;
+      color: #e6e6e6;
     }
     h1 {
-      font-size: 16px;
-      margin: 0 0 15px 0;
-      color: #333;
+      font-size: 18px;
+      margin: 0 0 16px 0;
+      color: #e6e6e6;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
     button {
-      background: #007bff;
+      background: #2563eb;
       color: white;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 10px 14px;
+      border-radius: 8px;
       cursor: pointer;
       font-size: 14px;
       width: 100%;
       margin-bottom: 10px;
+      transition: background 0.15s ease, transform 0.05s ease;
     }
-    button:hover {
-      background: #0056b3;
+    button:hover { background: #1d4ed8; }
+    button:active { transform: translateY(1px); }
+    button:disabled { background: #374151; cursor: not-allowed; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-warn { background: #f59e0b; color: #111827; }
+    .btn-success { background: #16a34a; }
+    .card {
+      background: #151821;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 14px;
     }
-    button:disabled {
-      background: #6c757d;
-      cursor: not-allowed;
+    .status { font-size: 12px; color: #9ca3af; text-align: center; }
+    .success { color: #22c55e; }
+    .error { color: #ef4444; }
+    .muted { color: #9ca3af; }
+    .section-title { margin: 14px 0 8px; font-weight: 600; font-size: 14px; }
+    .scroll {
+      max-height: 380px;
+      overflow-y: auto;
     }
-    .status {
-      font-size: 12px;
-      color: #666;
-      text-align: center;
-    }
-    .success {
-      color: #28a745;
-    }
-    .error {
-      color: #dc3545;
-    }
-    .info {
-      font-size: 11px;
-      color: #999;
-      margin-top: 10px;
-      line-height: 1.4;
-    }
+    .rank-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed rgba(255,255,255,0.06); }
+    .rank-score { color: #a78bfa; font-weight: 600; }
   </style>
 </head>
 <body>
   <h1>HH Job Assistant</h1>
-  
-          <button id="saveResume">Сохранить резюме</button>
-  <button id="resetResume" style="background: #dc3545; color: white;">Сбросить резюме</button>
-  <button id="testNotification">Тест уведомлений</button>
-  <button id="generateCoverLetter">Создать сопроводительное письмо</button>
-  <button id="analyzeVacancy" style="background: #ffc107; color: black;">Анализ вакансии 🔍</button>
+
+  <div class="row">
+    <button id="saveResume">Сохранить резюме</button>
+    <button id="resetResume" class="btn-danger">Сбросить резюме</button>
+  </div>
+  <div class="row">
+    <button id="generateCoverLetter">Создать сопроводительное письмо</button>
+    <button id="analyzeVacancy" class="btn-warn">Анализ вакансии 🔍</button>
+  </div>
+  <div class="row">
+    <button id="topMatches" class="btn-success">Топ по резюме ⭐</button>
+    <button id="testNotification">Тест уведомлений</button>
+  </div>
   
   <div id="status" class="status"></div>
   
-  <div id="coverLetterContainer" style="display: none; margin-top: 20px;">
-    <h3>Сопроводительное письмо:</h3>
-    <div id="coverLetterContent" style="background: #f5f5f5; padding: 15px; border-radius: 5px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 14px; line-height: 1.4;"></div>
+  <div id="coverLetterContainer" class="card" style="display: none; margin-top: 16px;">
+    <div class="section-title">Сопроводительное письмо</div>
+    <div id="coverLetterContent" class="scroll" style="background: transparent; padding: 0; border-radius: 6px; white-space: pre-wrap; font-size: 14px; line-height: 1.45;"></div>
     <div style="margin-top: 10px;">
-      <button id="copyCoverLetter" style="background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px;">Копировать</button>
-      <button id="closeCoverLetter" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Закрыть</button>
+      <button id="copyCoverLetter" class="btn-success" style="margin-right: 10px;">Копировать</button>
+      <button id="closeCoverLetter">Закрыть</button>
     </div>
   </div>
 
-  <div id="vacancyAnalysisContainer" style="display: none; margin-top: 20px;">
-    <h3>Анализ вакансии:</h3>
-    <div id="vacancyAnalysisContent" style="background: #f8f9fa; padding: 15px; border-radius: 5px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.4;">
+  <div id="vacancyAnalysisContainer" class="card" style="display: none; margin-top: 16px;">
+    <div class="section-title">Анализ вакансии</div>
+    <div id="vacancyAnalysisContent" class="scroll" style="font-size: 14px; line-height: 1.45;">
       <div id="analysisRecommendation" style="margin-bottom: 15px; padding: 10px; border-radius: 5px; font-weight: bold;"></div>
       <div id="analysisSummary" style="margin-bottom: 15px;"></div>
       <div id="analysisRedFlags" style="margin-bottom: 15px;">
@@ -91,21 +106,25 @@
       </div>
     </div>
     <div style="margin-top: 10px;">
-      <button id="closeVacancyAnalysis" style="background: #6c757d; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Закрыть</button>
+      <button id="closeVacancyAnalysis">Закрыть</button>
     </div>
   </div>
+
+  <div id="rankContainer" class="card" style="display: none; margin-top: 16px;">
+    <div class="section-title">Топ по резюме</div>
+    <div class="muted" style="margin-top: 2px; margin-bottom: 10px; font-size: 12px;">
+      Процент — оценка совпадения по смыслу с вашим резюме (эмбеддинги, 0–100%).
+      Клик по строке откроет вакансию на hh.ru.
+    </div>
+    <div id="rankList" class="scroll"></div>
+  </div>
   
-  <div class="info">
+  <div class="info muted">
     <strong>Автоматическое сохранение:</strong><br>
-    При переходе на страницу вакансии информация автоматически сохраняется на бэкенд в папку data/vacancies/
-    <br><br>
-            <strong>Сохранение резюме:</strong><br>
-            Зайдите на hh.ru, авторизуйтесь, откройте свое резюме, затем нажмите кнопку выше для сохранения резюме на бэкенд.
-            <br><br>
-            <strong>Сброс резюме:</strong><br>
-            Удаляет все сохраненные файлы резюме для обновления данных.
+    При открытии страницы вакансии данные сохраняются на бэкенд и индексируются для семантического поиска.
   </div>
 
   <script src="popup.js"></script>
 </body>
 </html>
+

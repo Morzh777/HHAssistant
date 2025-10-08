@@ -37,4 +37,3 @@ export interface ResumeAnalysisResult {
   certificates: Certificate[];
   additionalInfo: AdditionalInfo;
 }
-

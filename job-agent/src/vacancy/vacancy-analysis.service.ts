@@ -9,7 +9,8 @@ import {
   VacancyAnalysis,
   VacancyAnalysisResponse,
 } from '../types/vacancy-analysis.types';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from 'nestjs-prisma';
+import { EmbeddingsService } from '../embeddings/embeddings.service';
 
 @Injectable()
 export class VacancyAnalysisService {
@@ -18,6 +19,7 @@ export class VacancyAnalysisService {
   constructor(
     private readonly openaiService: OpenAIService,
     private readonly prisma: PrismaService,
+    private readonly embeddings: EmbeddingsService,
   ) {}
 
   async analyzeVacancy(
@@ -68,16 +70,56 @@ export class VacancyAnalysisService {
 
       await this.saveAnalysis(vacancyId, response);
 
+      // Если у вакансии еще нет эмбеддинга — досчитаем его из переданных данных
+      try {
+        const vacancyRow = await this.prisma.vacancy.findUnique({
+          where: { id: vacancyId },
+          select: { name: true, description: true, keySkills: true },
+        });
+        if (!vacancyRow) {
+          // вакансии нет в БД
+        } else {
+          // Проверяем наличие эмбеддинга через raw SQL
+          const embeddingCheck = await this.prisma.$queryRaw<
+            [{ embedding: any }]
+          >`
+            SELECT embedding FROM "Vacancy" WHERE id = ${vacancyId}
+          `;
+          if (
+            embeddingCheck.length > 0 &&
+            embeddingCheck[0].embedding != null
+          ) {
+            // уже есть эмбеддинг
+          } else {
+            const sourceText = [
+              vacancyRow.name ?? vacancyData?.name ?? '',
+              (vacancyRow.description as any) ?? vacancyData?.description ?? '',
+              JSON.stringify(
+                vacancyRow.keySkills ?? vacancyData?.key_skills ?? {},
+              ),
+            ]
+              .filter(Boolean)
+              .join('\n');
+            if (sourceText.trim().length > 0) {
+              await this.embeddings.storeVacancyEmbedding(
+                vacancyId,
+                sourceText,
+              );
+            }
+          }
+        }
+      } catch {}
+
       // best-effort: сохранить эмбеддинг по summary
       try {
         if (response.data?.summary) {
           const embText = `${response.data.summary}`;
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const emb = await this.openaiService.generateEmbedding(embText);
           const vectorLiteral = `[${emb.map((v) => (Number.isFinite(v) ? Number(v) : 0)).join(',')}]`;
           // eslint-disable-next-line @typescript-eslint/ban-ts-comment
           // @ts-ignore raw SQL update
-          await (this as any).prisma?.$executeRaw`UPDATE "VacancyAnalysis" SET embedding = ${vectorLiteral}::vector WHERE "vacancyId" = ${vacancyId} AND "analyzedAt" = ${response.analyzedAt}`;
+          await this.prisma
+            .$executeRaw`UPDATE "VacancyAnalysis" SET embedding = ${vectorLiteral}::vector WHERE "vacancyId" = ${vacancyId} AND "analyzedAt" = ${response.analyzedAt}`;
         }
       } catch {}
 
@@ -89,7 +131,8 @@ export class VacancyAnalysisService {
       this.logger.error(`Error analyzing vacancy ${vacancyId}:`, error);
       return {
         success: false,
-        error: (error as Error).message || 'Неизвестная ошибка при анализе вакансии',
+        error:
+          (error as Error).message || 'Неизвестная ошибка при анализе вакансии',
         vacancyId,
         analyzedAt: new Date().toISOString(),
       };
@@ -142,7 +185,10 @@ export class VacancyAnalysisService {
       });
     } catch (error) {
       this.logger.error('Ошибка сохранения анализа в БД:', error);
-      throw new HttpException('Ошибка сохранения анализа', HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        'Ошибка сохранения анализа',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -155,20 +201,22 @@ export class VacancyAnalysisService {
         orderBy: { analyzedAt: 'desc' },
       });
       if (!row) return null;
-      return (row.raw as any) ?? {
-        success: true,
-        vacancyId,
-        analyzedAt: row.analyzedAt.toISOString(),
-        data: {
-          toxicityScore: row.toxicityScore,
-          recommendation: row.recommendation as any,
-          redFlags: row.redFlags as any,
-          positives: row.positives as any,
-          summary: row.summary,
-          salaryAdequacy: row.salaryAdequacy as any,
-          experienceMatch: row.experienceMatch as any,
-        },
-      };
+      return (
+        (row.raw as any) ?? {
+          success: true,
+          vacancyId,
+          analyzedAt: row.analyzedAt.toISOString(),
+          data: {
+            toxicityScore: row.toxicityScore,
+            recommendation: row.recommendation as any,
+            redFlags: row.redFlags as any,
+            positives: row.positives as any,
+            summary: row.summary,
+            salaryAdequacy: row.salaryAdequacy as any,
+            experienceMatch: row.experienceMatch as any,
+          },
+        }
+      );
     } catch (error) {
       this.logger.warn(
         `Could not load existing analysis for vacancy ${vacancyId}:`,
@@ -189,21 +237,22 @@ export class VacancyAnalysisService {
       const rows = await this.prisma.vacancyAnalysis.findMany({
         orderBy: { analyzedAt: 'desc' },
       });
-      return rows.map((row) =>
-        (row.raw as any) ?? {
-          success: true,
-          vacancyId: row.vacancyId,
-          analyzedAt: row.analyzedAt.toISOString(),
-          data: {
-            toxicityScore: row.toxicityScore,
-            recommendation: row.recommendation as any,
-            redFlags: row.redFlags as any,
-            positives: row.positives as any,
-            summary: row.summary,
-            salaryAdequacy: row.salaryAdequacy as any,
-            experienceMatch: row.experienceMatch as any,
+      return rows.map(
+        (row) =>
+          (row.raw as any) ?? {
+            success: true,
+            vacancyId: row.vacancyId,
+            analyzedAt: row.analyzedAt.toISOString(),
+            data: {
+              toxicityScore: row.toxicityScore,
+              recommendation: row.recommendation as any,
+              redFlags: row.redFlags as any,
+              positives: row.positives as any,
+              summary: row.summary,
+              salaryAdequacy: row.salaryAdequacy as any,
+              experienceMatch: row.experienceMatch as any,
+            },
           },
-        },
       );
     } catch (error) {
       this.logger.error('Error loading all analyses:', error);

@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const testButton = document.getElementById('testNotification');
   const coverLetterButton = document.getElementById('generateCoverLetter');
   const analyzeVacancyButton = document.getElementById('analyzeVacancy');
+  const topMatchesButton = document.getElementById('topMatches');
   const statusDiv = document.getElementById('status');
 
   // Получаем текущую вкладку
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Отключаем кнопку анализа вакансии
     analyzeVacancyButton.disabled = true;
     analyzeVacancyButton.textContent = "Нужна вакансия hh.ru";
+    if (topMatchesButton) topMatchesButton.disabled = true;
     return;
   }
 
@@ -127,8 +129,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Переменные для отслеживания активных запросов
+  let isAnalyzingVacancy = false;
+  let isGeneratingCoverLetter = false;
+
   // Обработчик генерации сопроводительного письма (работает на любой странице)
   coverLetterButton.addEventListener('click', async () => {
+    // Проверяем, не выполняется ли уже генерация
+    if (isGeneratingCoverLetter) {
+      console.log('Cover letter generation already in progress, ignoring click');
+      return;
+    }
+
+    // Блокируем кнопку сразу
+    isGeneratingCoverLetter = true;
     coverLetterButton.disabled = true;
     coverLetterButton.textContent = "Проверяю...";
     statusDiv.textContent = "Проверяю существующие письма...";
@@ -199,6 +213,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       statusDiv.textContent = `❌ Ошибка: ${error.message}`;
       statusDiv.className = "status error";
     } finally {
+      // Всегда разблокируем кнопку и сбрасываем флаг
+      isGeneratingCoverLetter = false;
       coverLetterButton.disabled = false;
       coverLetterButton.textContent = "Создать сопроводительное письмо";
     }
@@ -229,8 +245,71 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Обработчик топа по резюме
+  if (topMatchesButton) {
+    topMatchesButton.addEventListener('click', async () => {
+      topMatchesButton.disabled = true;
+      topMatchesButton.textContent = "Загружаю...";
+      statusDiv.textContent = "Считаю топ вакансий по твоему резюме...";
+      statusDiv.className = "status";
+
+      try {
+        const { backendUrl = "http://localhost:3000" } = await chrome.storage.sync.get("backendUrl");
+        const response = await fetch(`${backendUrl}/vacancy-storage/rankings?limit=10`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        const rankContainer = document.getElementById('rankContainer');
+        const rankList = document.getElementById('rankList');
+        rankList.innerHTML = '';
+
+        if (data.success && Array.isArray(data.data)) {
+          data.data.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'rank-item';
+            row.style.cursor = 'pointer';
+            row.title = `Открыть вакансию ${item.id} на hh.ru`;
+            row.innerHTML = `<span>${item.name}</span><span class="rank-score">${(item.score * 100).toFixed(0)}%</span>`;
+            row.addEventListener('click', async () => {
+              const url = `https://hh.ru/vacancy/${item.id}`;
+              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (tab && tab.id) {
+                chrome.tabs.update(tab.id, { url });
+              } else {
+                chrome.tabs.create({ url });
+              }
+              window.close();
+            });
+            rankList.appendChild(row);
+          });
+          rankContainer.style.display = 'block';
+          statusDiv.textContent = "✅ Готово";
+          statusDiv.className = "status success";
+        } else {
+          statusDiv.textContent = data.message || 'Нет данных для ранжирования';
+          statusDiv.className = "status error";
+        }
+      } catch (error) {
+        console.error('Ranking failed:', error);
+        statusDiv.textContent = `❌ Ошибка: ${error.message}`;
+        statusDiv.className = "status error";
+      } finally {
+        topMatchesButton.disabled = false;
+        topMatchesButton.textContent = "Топ по резюме ⭐";
+      }
+    });
+  }
+
   // Обработчик анализа вакансии
   analyzeVacancyButton.addEventListener('click', async () => {
+    // Проверяем, не выполняется ли уже анализ
+    if (isAnalyzingVacancy) {
+      console.log('Analysis already in progress, ignoring click');
+      return;
+    }
+
+    // Блокируем кнопку сразу
+    isAnalyzingVacancy = true;
     analyzeVacancyButton.disabled = true;
     analyzeVacancyButton.textContent = "Анализирую...";
     statusDiv.textContent = "Анализирую вакансию на токсичность...";
@@ -254,31 +333,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const vacancyId = urlMatch[1];
       console.log('Analyzing vacancy ID:', vacancyId);
 
-      // Проверяем есть ли уже анализ для этой вакансии
+      // Генерируем анализ (сервер сам проверит существующий анализ)
       const { backendUrl = "http://localhost:3000" } = await chrome.storage.sync.get("backendUrl");
       
-      try {
-        const response = await fetch(`${backendUrl}/vacancy-analysis/${vacancyId}`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          if (data.success && data.data) {
-            // Анализ уже существует - показываем его
-            statusDiv.textContent = "✅ Найден существующий анализ!";
-            statusDiv.className = "status success";
-            
-            await displayVacancyAnalysis(data.data);
-            return;
-          }
-        }
-      } catch (error) {
-        console.log('No existing analysis found, will generate new one:', error);
-      }
-
-      // Анализа нет - генерируем новый
       analyzeVacancyButton.textContent = "Генерирую анализ...";
-      statusDiv.textContent = "Генерирую новый анализ вакансии...";
+      statusDiv.textContent = "Генерирую анализ вакансии...";
       
       const analysisResponse = await fetch(`${backendUrl}/vacancy-analysis/analyze/${vacancyId}`, {
         method: 'POST'
@@ -306,6 +365,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       statusDiv.textContent = `❌ Ошибка: ${error.message}`;
       statusDiv.className = "status error";
     } finally {
+      // Всегда разблокируем кнопку и сбрасываем флаг
+      isAnalyzingVacancy = false;
       analyzeVacancyButton.disabled = false;
       analyzeVacancyButton.textContent = "Анализ вакансии 🔍";
     }
@@ -366,15 +427,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Настройка рекомендации с цветом
       const recommendationConfig = {
-        apply: { text: '✅ Рекомендуется откликнуться', color: '#d4edda', borderColor: '#28a745' },
-        caution: { text: '⚠️ Откликаться с осторожностью', color: '#fff3cd', borderColor: '#ffc107' },
-        avoid: { text: '❌ Не рекомендуется', color: '#f8d7da', borderColor: '#dc3545' }
+        apply: { text: '✅ Рекомендуется откликнуться', color: '#d4edda', borderColor: '#28a745', textColor: '#111827' },
+        caution: { text: '⚠️ Откликаться с осторожностью', color: '#fff3cd', borderColor: '#ffc107', textColor: '#111827' },
+        avoid: { text: '❌ Не рекомендуется', color: '#f8d7da', borderColor: '#dc3545', textColor: '#111827' }
       };
       
       const config = recommendationConfig[analysisData.recommendation] || recommendationConfig.caution;
       recommendationDiv.textContent = config.text;
       recommendationDiv.style.backgroundColor = config.color;
       recommendationDiv.style.border = `2px solid ${config.borderColor}`;
+      recommendationDiv.style.color = config.textColor || '#111827';
       
       // Резюме
       summaryDiv.innerHTML = `<strong>Резюме:</strong> ${analysisData.summary}`;

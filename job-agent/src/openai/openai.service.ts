@@ -1,4 +1,3 @@
-
 import dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -8,21 +7,16 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import * as fs from 'fs/promises';
 import { Resume, ResumeAnalysisResult } from '../types/resume.interfaces';
 import { Vacancy } from '../types/vacancy.types';
-import { CoverLetterResponse } from '../types/cover-letter.types';
+// cover-letter responses are handled via CoverLetterService (DB-backed)
 import {
   OPENAI_CONFIGS,
   SYSTEM_PROMPTS,
   USER_PROMPTS,
-  FILE_PATHS,
-  FILE_TEMPLATES,
-  REGEX_PATTERNS,
-  FILE_CONTENT_TEMPLATES,
-  CONSTANTS,
+  // file constants are no longer used for cover letters
 } from '../config/openai.config';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from 'nestjs-prisma';
 
 @Injectable()
 export class OpenAIService {
@@ -78,7 +72,9 @@ export class OpenAIService {
           },
         ],
         ...(config.maxTokens && { max_tokens: config.maxTokens }),
-        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        ...(config.temperature !== undefined && {
+          temperature: config.temperature,
+        }),
       });
 
       const firstChoice = completion.choices[0];
@@ -100,14 +96,7 @@ export class OpenAIService {
         error,
       );
 
-      // Handle OpenAI API errors according to Context7 best practices
       if (error instanceof Error) {
-        // Check if it's an OpenAI API error
-        if ('status' in error && 'request_id' in error) {
-          this.logger.error(
-            `OpenAI API Error - Status: ${(error as any).status}, Request ID: ${(error as any).request_id}`,
-          );
-        }
         throw new Error(
           `Не удалось сгенерировать сопроводительное письмо: ${error.message}`,
         );
@@ -139,7 +128,9 @@ export class OpenAIService {
             content: prompt,
           },
         ],
-        ...(config.maxCompletionTokens && { max_completion_tokens: config.maxCompletionTokens }),
+        ...(config.maxCompletionTokens && {
+          max_completion_tokens: config.maxCompletionTokens,
+        }),
       });
 
       const firstChoice = completion.choices[0];
@@ -201,7 +192,9 @@ export class OpenAIService {
             content: prompt,
           },
         ],
-        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        ...(config.temperature !== undefined && {
+          temperature: config.temperature,
+        }),
         ...(config.maxTokens && { max_tokens: config.maxTokens }),
       });
 
@@ -247,7 +240,7 @@ export class OpenAIService {
   async generateText(
     prompt: string,
     systemPrompt: string,
-    config: any
+    config: { model: string; maxTokens?: number; temperature?: number },
   ): Promise<string> {
     try {
       const completion = await this.openai.chat.completions.create({
@@ -263,7 +256,9 @@ export class OpenAIService {
           },
         ],
         ...(config.maxTokens && { max_tokens: config.maxTokens }),
-        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        ...(config.temperature !== undefined && {
+          temperature: config.temperature,
+        }),
       });
 
       const firstChoice = completion.choices[0];
@@ -280,8 +275,9 @@ export class OpenAIService {
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
+      const model = OPENAI_CONFIGS.EMBEDDINGS.model;
       const response = await this.openai.embeddings.create({
-        model: 'text-embedding-3-small',
+        model,
         input: text,
       });
       const embedding = response.data?.[0]?.embedding as unknown as number[];
@@ -311,7 +307,9 @@ export class OpenAIService {
           },
         ],
         ...(config.maxTokens && { max_tokens: config.maxTokens }),
-        ...(config.temperature !== undefined && { temperature: config.temperature }),
+        ...(config.temperature !== undefined && {
+          temperature: config.temperature,
+        }),
       });
 
       const firstChoice = completion.choices[0];
@@ -322,172 +320,7 @@ export class OpenAIService {
     }
   }
 
-  /**
-   * Получает сопроводительное письмо по ID вакансии
-   */
-  async getCoverLetterByVacancyId(
-    vacancyId: string,
-  ): Promise<CoverLetterResponse> {
-    try {
-      const coverLettersDir = path.join(
-        process.cwd(),
-        FILE_PATHS.COVER_LETTERS_DIR,
-      );
-      const files = await fs.readdir(coverLettersDir);
-
-      if (files.length === 0) {
-        throw new Error('Сопроводительные письма не найдены');
-      }
-
-      // Ищем файл по ID вакансии
-      const targetFile = files.find(
-        (file) =>
-          file.startsWith(`cover_letter_${vacancyId}_`) &&
-          file.endsWith('.txt'),
-      );
-
-      if (!targetFile) {
-        throw new Error(`Письмо для вакансии ${vacancyId} не найдено`);
-      }
-
-      const filePath = path.join(coverLettersDir, targetFile);
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-
-      // Парсим файл и извлекаем только текст письма
-      const lines = fileContent.split('\n');
-
-      // Ищем второй разделитель (после метаданных)
-      let startIndex = -1;
-      let endIndex = lines.length;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (REGEX_PATTERNS.FILE_SEPARATOR.test(lines[i])) {
-          if (startIndex === -1) {
-            startIndex = i;
-          } else {
-            // Это второй разделитель - начинаем с следующей строки
-            startIndex = i + 1;
-            break;
-          }
-        }
-      }
-
-      // Ищем третий разделитель (конец письма)
-      for (let i = startIndex; i < lines.length; i++) {
-        if (lines[i].includes('========================')) {
-          endIndex = i;
-          break;
-        }
-      }
-
-      let coverLetterText = '';
-      if (startIndex !== -1 && endIndex > startIndex) {
-        coverLetterText = lines.slice(startIndex, endIndex).join('\n').trim();
-      } else {
-        coverLetterText = fileContent;
-      }
-
-      return {
-        success: true,
-        content: coverLetterText,
-        fileName: targetFile,
-        vacancyId: vacancyId,
-        generatedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      this.logger.error('Ошибка при получении письма по ID:', error);
-      throw new Error(
-        `Не удалось получить письмо: ${(error as Error).message}`,
-      );
-    }
-  }
-
-  /**
-   * Получает последнее сгенерированное сопроводительное письмо
-   */
-  async getLatestCoverLetter(): Promise<CoverLetterResponse> {
-    try {
-      const coverLettersDir = path.join(
-        process.cwd(),
-        FILE_PATHS.COVER_LETTERS_DIR,
-      );
-      const files = await fs.readdir(coverLettersDir);
-
-      if (files.length === 0) {
-        throw new Error('Сопроводительные письма не найдены');
-      }
-
-      // Получаем самый новый файл
-      const latestFile = files
-        .filter(
-          (file) => file.startsWith('cover_letter_') && file.endsWith('.txt'),
-        )
-        .sort()
-        .pop();
-
-      if (!latestFile) {
-        throw new Error('Файлы сопроводительных писем не найдены');
-      }
-
-      const filePath = path.join(coverLettersDir, latestFile);
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-
-      // Парсим файл и извлекаем только текст письма
-      const lines = fileContent.split('\n');
-
-      // Ищем второй разделитель (после метаданных)
-      let startIndex = -1;
-      let endIndex = lines.length;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (REGEX_PATTERNS.FILE_SEPARATOR.test(lines[i])) {
-          if (startIndex === -1) {
-            startIndex = i;
-          } else {
-            // Это второй разделитель - начинаем с следующей строки
-            startIndex = i + 1;
-            break;
-          }
-        }
-      }
-
-      // Ищем третий разделитель (конец письма)
-      for (let i = startIndex; i < lines.length; i++) {
-        if (lines[i].includes('========================')) {
-          endIndex = i;
-          break;
-        }
-      }
-
-      let coverLetterText = '';
-      if (startIndex !== -1 && endIndex > startIndex) {
-        coverLetterText = lines.slice(startIndex, endIndex).join('\n').trim();
-      } else {
-        coverLetterText = fileContent;
-      }
-
-      // Извлекаем vacancyId из имени файла
-      const vacancyIdMatch = latestFile.match(
-        REGEX_PATTERNS.COVER_LETTER_VACANCY_ID,
-      );
-      const vacancyId = vacancyIdMatch
-        ? vacancyIdMatch[1]
-        : CONSTANTS.UNKNOWN_VALUE;
-
-      return {
-        success: true,
-        content: coverLetterText,
-        fileName: latestFile,
-        vacancyId: vacancyId,
-        generatedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      this.logger.error('Ошибка при получении последнего письма:', error);
-      throw new Error(
-        `Не удалось получить письмо: ${(error as Error).message}`,
-      );
-    }
-  }
+  // Методы чтения писем из файловой системы удалены. Чтение осуществляется через CoverLetterService из БД.
 
   /**
    * Сохраняет сгенерированное сопроводительное письмо в файл
@@ -497,62 +330,32 @@ export class OpenAIService {
     vacancyData: Vacancy,
   ): Promise<void> {
     try {
-      const coverLettersDir = path.join(
-        process.cwd(),
-        FILE_PATHS.COVER_LETTERS_DIR,
-      );
-      await fs.mkdir(coverLettersDir, { recursive: true });
+      // Сохраняем только в БД (без записи на файловую систему)
+      const generatedAt = new Date();
+      await this.prisma.coverLetter.create({
+        data: {
+          vacancyId: vacancyData?.id || 'unknown',
+          content: coverLetter,
+          generatedAt,
+          // fileName больше не используется, оставляем пустым
+          fileName: null as unknown as string,
+        },
+      });
 
-      const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const vacancyId = vacancyData?.id || CONSTANTS.UNKNOWN_VALUE;
-      const fileName = FILE_TEMPLATES.COVER_LETTER.replace(
-        '{vacancyId}',
-        vacancyId,
-      ).replace('{date}', timestamp);
-
-      const filePath = path.join(coverLettersDir, fileName);
-
-      // Формируем данные для шаблона
-      const salaryText = vacancyData?.salary
-        ? `${vacancyData.salary.from || ''} - ${vacancyData.salary.to || ''} ${vacancyData.salary.currency || ''}`
-        : CONSTANTS.NOT_SPECIFIED_SALARY;
-
-      const fileContent = FILE_CONTENT_TEMPLATES.COVER_LETTER_HEADER.replace(
-        '{vacancyName}',
-        vacancyData?.name || CONSTANTS.NOT_SPECIFIED,
-      )
-        .replace('{vacancyId}', vacancyId)
-        .replace('{generatedAt}', new Date().toISOString())
-        .replace('{salary}', salaryText)
-        .replace('{coverLetter}', coverLetter);
-
-      await fs.writeFile(filePath, fileContent, 'utf-8');
-      this.logger.log(`Сопроводительное письмо сохранено: ${fileName}`);
-
-      // Save to DB as well (for API access) and generate embedding
+      // Генерируем эмбеддинг для текста письма и сохраняем в pgvector
       try {
-        const generatedAt = new Date();
-        await this.prisma.coverLetter.create({
-          data: {
-            id: undefined as unknown as string, // let default cuid() generate in DB if mapped; else prisma will handle
-            vacancyId: vacancyData?.id || 'unknown',
-            content: coverLetter,
-            generatedAt,
-            fileName,
-          },
-        });
-        // embedding from the letter text
         const emb = await this.generateEmbedding(coverLetter);
         const vectorLiteral = `[${emb
           .map((v) => (Number.isFinite(v) ? Number(v) : 0))
           .join(',')}]`;
-        await this.prisma.$executeRaw`UPDATE "CoverLetter" SET embedding = ${vectorLiteral}::vector WHERE "vacancyId" = ${vacancyData?.id || 'unknown'} AND "generatedAt" = ${generatedAt}`;
+        await this.prisma
+          .$executeRaw`UPDATE "CoverLetter" SET embedding = ${vectorLiteral}::vector WHERE "vacancyId" = ${vacancyData?.id || 'unknown'} AND "generatedAt" = ${generatedAt}`;
       } catch (e) {
-        this.logger.warn('Не удалось сохранить эмбеддинг/письмо в БД', e);
+        this.logger.warn('Не удалось сохранить эмбеддинг для письма', e);
       }
     } catch (error) {
       this.logger.error(
-        'Ошибка при сохранении сопроводительного письма:',
+        'Ошибка при сохранении сопроводительного письма в БД:',
         error,
       );
       // Не выбрасываем ошибку, чтобы не прерывать основной процесс

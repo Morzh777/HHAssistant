@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from 'nestjs-prisma';
 import { CoverLetterResponse } from '../types/cover-letter.types';
 
+/**
+ * Сервис для работы с сопроводительными письмами
+ * Предоставляет методы для получения сгенерированных сопроводительных писем из базы данных
+ */
 @Injectable()
 export class CoverLetterService {
   private readonly logger = new Logger(CoverLetterService.name);
@@ -10,6 +14,9 @@ export class CoverLetterService {
 
   /**
    * Получает сопроводительное письмо по ID вакансии
+   * @param vacancyId - ID вакансии для поиска письма
+   * @returns Promise<CoverLetterResponse> - Сопроводительное письмо для указанной вакансии
+   * @throws Error если письмо не найдено или произошла ошибка при получении
    */
   async getCoverLetterByVacancyId(
     vacancyId: string,
@@ -25,7 +32,6 @@ export class CoverLetterService {
       return {
         success: true,
         content: row.content,
-        fileName: row.fileName ?? '',
         vacancyId: row.vacancyId,
         generatedAt: row.generatedAt.toISOString(),
       };
@@ -39,6 +45,8 @@ export class CoverLetterService {
 
   /**
    * Получает последнее сгенерированное сопроводительное письмо
+   * @returns Promise<CoverLetterResponse> - Последнее сопроводительное письмо по дате генерации
+   * @throws Error если письма не найдены или произошла ошибка при получении
    */
   async getLatestCoverLetter(): Promise<CoverLetterResponse> {
     try {
@@ -51,7 +59,6 @@ export class CoverLetterService {
       return {
         success: true,
         content: row.content,
-        fileName: row.fileName ?? '',
         vacancyId: row.vacancyId,
         generatedAt: row.generatedAt.toISOString(),
       };

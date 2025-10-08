@@ -1,94 +1,161 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
-// no file storage; keep fs import out
 import { OpenAIService } from '../openai/openai.service';
 import { REGEX_PATTERNS } from '../config/openai.config';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from 'nestjs-prisma';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
+import { AuthService } from '../auth/auth.service';
 import type { Prisma } from '@prisma/client';
+import type {
+  LatestResumeDataResponse,
+  ResumeAnalysisServiceResponse,
+  ResumeParseServiceResponse,
+  SavedResumeAnalysisResponse,
+  HttpFetchResponse,
+} from '../types/resume.controller.types';
+import type { ResumeAnalysisResult } from '../types/resume.interfaces';
+import type { GetCookiesResponse } from '../types/auth.types';
 
 @Injectable()
 export class ResumeService {
   private readonly USER_AGENT =
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  // HTTP заголовки для запросов к HH.ru
+  private readonly HTTP_HEADERS = {
+    'User-Agent': this.USER_AGENT,
+    Accept:
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    'Sec-Ch-Ua':
+      '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"macOS"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+  };
 
   constructor(
     private readonly openaiService: OpenAIService,
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
+    private readonly authService: AuthService,
   ) {}
 
-  private async getCookies(): Promise<string | undefined> {
+  private async getCookies(): Promise<GetCookiesResponse> {
     try {
-      const fs = await import('fs/promises');
-      const cookiePath = `${process.cwd()}/job-agent/data/hh-cookie.txt`;
-      const content = await fs.readFile(cookiePath, 'utf-8');
-      return content.trim() || undefined;
+      const response = await this.authService.getCookies();
+      return response;
     } catch {
-      return undefined;
+      return {
+        success: false,
+        error: 'Ошибка получения cookies',
+      };
     }
   }
 
-  async parseResume(url: string): Promise<string> {
+  async parseResume(url: string): Promise<ResumeParseServiceResponse> {
     try {
-      const html = await this.fetchHtmlWithCookies(url);
-      return html;
+      const fetchResponse = await this.fetchHtmlWithCookies(url);
+
+      if (!fetchResponse.success) {
+        throw new HttpException(
+          fetchResponse.error || 'Не удалось получить HTML',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      return { html: fetchResponse.html };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
       throw new HttpException(
-        `Resume parse error: ${message}`,
+        `Ошибка парсинга резюме: ${message}`,
         HttpStatus.BAD_REQUEST,
       );
     }
   }
 
-  async getHtml(url: string): Promise<string> {
-    const html = await this.fetchHtmlWithCookies(url);
-    return html;
-  }
+  async getHtml(url: string): Promise<ResumeParseServiceResponse> {
+    try {
+      const fetchResponse = await this.fetchHtmlWithCookies(url);
 
-  private async fetchHtmlWithCookies(url: string): Promise<string> {
-    const cookieHeader = await this.getCookies();
+      if (!fetchResponse.success) {
+        throw new HttpException(
+          fetchResponse.error || 'Не удалось получить HTML',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
-    if (!cookieHeader) {
+      return { html: fetchResponse.html };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
       throw new HttpException(
-        'Cookies not found. Please send cookies via Chrome extension first.',
-        HttpStatus.UNAUTHORIZED,
+        `Ошибка получения HTML: ${message}`,
+        HttpStatus.BAD_REQUEST,
       );
     }
+  }
 
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
-        Cookie: cookieHeader,
-        'Sec-Ch-Ua':
-          '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"macOS"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      },
-    });
+  private async fetchHtmlWithCookies(url: string): Promise<HttpFetchResponse> {
+    try {
+      const cookiesResponse = await this.getCookies();
 
-    return response.data as string;
+      if (!cookiesResponse.success || !cookiesResponse.cookie) {
+        return {
+          success: false,
+          html: '',
+          error:
+            'Cookies не найдены. Сначала отправьте cookies через Chrome расширение.',
+        };
+      }
+
+      const response = await axios.get(url, {
+        headers: {
+          ...this.HTTP_HEADERS,
+          Cookie: cookiesResponse.cookie,
+        },
+      });
+
+      return {
+        success: true,
+        html: response.data as string,
+        statusCode: response.status,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
+      return {
+        success: false,
+        html: '',
+        error: `Ошибка HTTP запроса: ${message}`,
+      };
+    }
   }
 
   /**
    * Анализирует резюме через OpenAI API
    */
-  async analyzeResumeWithAI(url: string): Promise<any> {
+  async analyzeResumeWithAI(
+    url: string,
+  ): Promise<ResumeAnalysisServiceResponse> {
     try {
-      const html = await this.fetchHtmlWithCookies(url);
+      const fetchResponse = await this.fetchHtmlWithCookies(url);
+
+      if (!fetchResponse.success) {
+        throw new HttpException(
+          fetchResponse.error || 'Не удалось получить HTML',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const html = fetchResponse.html;
       // HTML НЕ сохраняем
 
       // Проверяем доступность OpenAI API
@@ -116,9 +183,10 @@ export class ResumeService {
         analysis,
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
       throw new HttpException(
-        `Resume analysis error: ${message}`,
+        `Ошибка анализа резюме: ${message}`,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -127,28 +195,34 @@ export class ResumeService {
   /**
    * Анализирует сохраненное резюме по ID
    */
-  async analyzeSavedResume(resumeId: string): Promise<any> {
+  async analyzeSavedResume(
+    resumeId: string,
+  ): Promise<SavedResumeAnalysisResponse> {
     try {
       void resumeId; // explicitly mark param as used
       await Promise.resolve();
       // HTML не сохраняем — повторный анализ сохраненного HTML не поддерживается
-      throw new HttpException(
-        'Повторный анализ сохраненного HTML не поддерживается (HTML не хранится). Запустите анализ по URL.',
-        HttpStatus.NOT_IMPLEMENTED,
-      );
+      return {
+        success: false,
+        message:
+          'Повторный анализ сохраненного HTML не поддерживается (HTML не хранится). Запустите анализ по URL.',
+        error: 'НЕ_РЕАЛИЗОВАНО',
+      };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new HttpException(
-        `Saved resume analysis error: ${message}`,
-        HttpStatus.BAD_REQUEST,
-      );
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
+      return {
+        success: false,
+        message: `Ошибка анализа сохраненного резюме: ${message}`,
+        error: 'ОШИБКА_АНАЛИЗА',
+      };
     }
   }
 
   /**
    * Получает последние данные резюме из файла анализа
    */
-  async getLatestResumeData(): Promise<any> {
+  async getLatestResumeData(): Promise<LatestResumeDataResponse> {
     try {
       const row = await this.prisma.userResume.findFirst({
         orderBy: { createdAt: 'desc' },
@@ -161,14 +235,15 @@ export class ResumeService {
       }
       return {
         success: true,
-        data: row.analysisJson,
+        data: row.analysisJson as unknown as ResumeAnalysisResult,
         file: row.resumeId,
         loadedAt: new Date().toISOString(),
       };
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message =
+        error instanceof Error ? error.message : 'Неизвестная ошибка';
       throw new HttpException(
-        `Error loading resume data: ${message}`,
+        `Ошибка загрузки данных резюме: ${message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -177,18 +252,15 @@ export class ResumeService {
   /**
    * Получает структуру сохраненного HTML документа
    */
-  // getResumeStructure удален: HTML не сохраняется
-
-  // HTML не сохраняем
-
-  // Загрузка HTML не поддерживается, так как он не сохраняется
 
   private async saveAnalysisToDb(
     resumeId: string,
     analysis: unknown,
   ): Promise<void> {
     try {
-      const analysisJson = JSON.parse(JSON.stringify(analysis)) as Prisma.InputJsonValue;
+      const analysisJson = JSON.parse(
+        JSON.stringify(analysis),
+      ) as Prisma.InputJsonValue;
       const saved = await this.prisma.userResume.upsert({
         where: { resumeId },
         create: {
@@ -205,68 +277,15 @@ export class ResumeService {
         if (embSource && embSource.length > 0) {
           const emb = await this.embeddings.generate(embSource);
           const vectorLiteral = `[${emb.map((v) => (Number.isFinite(v) ? Number(v) : 0)).join(',')}]`;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          await this.prisma.$executeRaw`UPDATE "UserResume" SET embedding = ${vectorLiteral}::vector WHERE id = ${saved.id}`;
+
+          await this.prisma
+            .$executeRaw`UPDATE "UserResume" SET embedding = ${vectorLiteral}::vector WHERE id = ${saved.id}`;
         }
       } catch {
         // ignore embedding errors
       }
     } catch (error) {
-      // Логируем, но не валим основной процесс
-      console.warn('Failed to save resume analysis to DB:', error);
+      console.warn('Не удалось сохранить анализ резюме в БД:', error);
     }
-  }
-
-  private extractBasicStructure(html: string): any {
-    // Простое извлечение основной информации из HTML
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title = titleMatch ? titleMatch[1] : 'Не найдено';
-
-    // Ищем основные секции
-    const sections: string[] = [];
-    const h4Matches = html.match(/<h4[^>]*>([^<]+)<\/h4>/gi);
-    if (h4Matches) {
-      sections.push(
-        ...h4Matches.map((match) => match.replace(/<[^>]*>/g, '').trim()),
-      );
-    }
-
-    // Ищем контактную информацию
-    const emailMatch = html.match(
-      /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/,
-    );
-    const phoneMatch = html.match(/(\+?[0-9\s\-()]{10,})/);
-
-    return {
-      title,
-      sections,
-      contactInfo: {
-        email: emailMatch ? emailMatch[1] : null,
-        phone: phoneMatch ? phoneMatch[1] : null,
-      },
-      htmlLength: html.length,
-      extractedAt: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Извлекает текстовую часть из HTML, убирая все теги
-   */
-  private extractTextFromHtml(html: string): string {
-    // Убираем все HTML теги
-    let text = html.replace(/<[^>]*>/g, ' ');
-
-    // Убираем множественные пробелы и переносы строк
-    text = text.replace(/\s+/g, ' ');
-
-    // Убираем лишние пробелы в начале и конце
-    text = text.trim();
-
-    // Ограничиваем размер текста (примерно 50,000 символов)
-    if (text.length > 50000) {
-      text = text.substring(0, 50000) + '...';
-    }
-
-    return text;
   }
 }

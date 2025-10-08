@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
 import { VacancyStorageService } from './vacancy-storage.service';
 import type { Vacancy } from '../types/vacancy.types';
 import type { ApiResponse } from '../types/common.types';
@@ -12,7 +12,9 @@ export class VacancyStorageController {
    * Сохранение вакансии от Chrome расширения
    */
   @Post('save')
-  async saveVacancy(@Body() vacancyData: Vacancy): Promise<ApiResponse<Vacancy>> {
+  async saveVacancy(
+    @Body() vacancyData: Vacancy,
+  ): Promise<ApiResponse<Vacancy>> {
     return this.vacancyStorageService.saveVacancy(vacancyData);
   }
 
@@ -26,11 +28,25 @@ export class VacancyStorageController {
   }
 
   /**
+   * GET /vacancy-storage/rankings
+   * Топ-N вакансий по соответствию последнему резюме (эмбеддинги)
+   */
+  @Get('rankings')
+  async rank(@Query('limit') limit?: string): Promise<
+    ApiResponse<Array<{ id: string; name: string; score: number }>>
+  > {
+    const n = Number.parseInt(limit ?? '20', 10);
+    return this.vacancyStorageService.rankByLatestResume(Number.isFinite(n) && n > 0 ? n : 20);
+  }
+
+  /**
    * GET /vacancy-storage/:id
    * Получение конкретной вакансии по ID
    */
   @Get(':id')
-  async getVacancy(@Param('id') vacancyId: string): Promise<ApiResponse<Vacancy>> {
+  async getVacancy(
+    @Param('id') vacancyId: string,
+  ): Promise<ApiResponse<Vacancy>> {
     return this.vacancyStorageService.getVacancy(vacancyId);
   }
 }
