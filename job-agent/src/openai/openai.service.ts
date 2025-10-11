@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Загружаем .env файл
@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Resume, ResumeAnalysisResult } from '../types/resume.interfaces';
 import { Vacancy } from '../types/vacancy.types';
+import type { VacancyAnalysis } from '../types/vacancy-analysis.types';
 // cover-letter responses are handled via CoverLetterService (DB-backed)
 import {
   OPENAI_CONFIGS,
@@ -52,12 +53,17 @@ export class OpenAIService {
   async generateCoverLetter(
     resumeData: Resume,
     vacancyData: Vacancy,
+    vacancyAnalysis?: VacancyAnalysis | null,
   ): Promise<string> {
     try {
       this.logger.log('Генерируем сопроводительное письмо через OpenAI...');
 
       const config = OPENAI_CONFIGS.COVER_LETTER;
-      const prompt = USER_PROMPTS.COVER_LETTER(resumeData, vacancyData);
+      const prompt = USER_PROMPTS.COVER_LETTER(
+        resumeData,
+        vacancyData,
+        vacancyAnalysis,
+      );
 
       const completion = await this.openai.chat.completions.create({
         model: config.model,

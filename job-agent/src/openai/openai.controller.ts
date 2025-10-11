@@ -1,5 +1,6 @@
 import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { OpenAIService } from './openai.service';
+import { PrismaService } from 'nestjs-prisma';
 import { Resume } from '../types/resume.interfaces';
 import { Vacancy } from '../types/vacancy.types';
 
@@ -7,7 +8,10 @@ import { Vacancy } from '../types/vacancy.types';
 export class OpenAIController {
   private readonly logger = new Logger(OpenAIController.name);
 
-  constructor(private readonly openaiService: OpenAIService) {}
+  constructor(
+    private readonly openaiService: OpenAIService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Post('generate-cover-letter')
   async generateCoverLetter(
@@ -22,9 +26,27 @@ export class OpenAIController {
         throw new Error('Необходимы данные резюме и вакансии');
       }
 
+      // Попытаться получить анализ вакансии
+      let vacancyAnalysis: any = null;
+      try {
+        const analysis = await this.prisma.vacancyAnalysis.findFirst({
+          where: { vacancyId: vacancy?.id },
+          orderBy: { analyzedAt: 'desc' },
+        });
+        if (analysis) {
+          vacancyAnalysis = analysis;
+          this.logger.log(
+            `Найден анализ вакансии ${vacancy.id} для улучшения письма`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn('Не удалось получить анализ вакансии:', error);
+      }
+
       const coverLetter = await this.openaiService.generateCoverLetter(
         resume,
         vacancy,
+        vacancyAnalysis,
       );
 
       return {

@@ -16,11 +16,27 @@ import type {
 import type { ResumeAnalysisResult } from '../types/resume.interfaces';
 import type { GetCookiesResponse } from '../types/auth.types';
 
+/**
+ * ResumeService - сервис для работы с резюме
+ *
+ * Предоставляет функциональность для:
+ * - Парсинга HTML резюме с HH.ru с использованием cookies
+ * - Анализа резюме через OpenAI API
+ * - Сохранения результатов анализа в БД с векторными эмбеддингами
+ * - Получения последних проанализированных данных
+ *
+ * Использует AuthService для получения cookies пользователя для доступа к приватным данным.
+ * Все HTTP запросы используют реалистичные заголовки браузера для обхода защиты HH.ru.
+ */
 @Injectable()
 export class ResumeService {
   private readonly USER_AGENT =
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-  // HTTP заголовки для запросов к HH.ru
+
+  /**
+   *HTTP заголовки для запросов к HH.ru
+   *Имитируют реальный браузер Chrome для обхода защиты сайта
+   */
   private readonly HTTP_HEADERS = {
     'User-Agent': this.USER_AGENT,
     Accept:
@@ -47,6 +63,14 @@ export class ResumeService {
     private readonly authService: AuthService,
   ) {}
 
+  /**
+   *Получает cookies пользователя для авторизации на HH.ru
+   *
+   *@returns Promise<GetCookiesResponse> - результат получения cookies
+   *
+   *Использует AuthService для получения сохраненных cookies.
+   *Возвращает структурированный ответ с информацией об успешности операции.
+   */
   private async getCookies(): Promise<GetCookiesResponse> {
     try {
       const response = await this.authService.getCookies();
@@ -59,6 +83,19 @@ export class ResumeService {
     }
   }
 
+  /**
+   *Парсит HTML резюме по URL
+   *
+   *@param url - URL резюме на HH.ru
+   *@returns Promise<ResumeParseServiceResponse> - HTML содержимое страницы резюме
+   *
+   *Процесс:
+   *1. Получает cookies пользователя
+   *2. Выполняет HTTP запрос к HH.ru с cookies
+   *3. Возвращает HTML содержимое страницы
+   *
+   *Требует предварительно сохраненные cookies для доступа к приватным данным.
+   */
   async parseResume(url: string): Promise<ResumeParseServiceResponse> {
     try {
       const fetchResponse = await this.fetchHtmlWithCookies(url);
@@ -81,6 +118,15 @@ export class ResumeService {
     }
   }
 
+  /**
+   *Получает HTML содержимое страницы по URL
+   *
+   *@param url - URL страницы
+   *@returns Promise<ResumeParseServiceResponse> - HTML содержимое страницы
+   *
+   *Алиас для parseResume. Используется для получения HTML без анализа.
+   *Требует cookies для доступа к приватным данным на HH.ru.
+   */
   async getHtml(url: string): Promise<ResumeParseServiceResponse> {
     try {
       const fetchResponse = await this.fetchHtmlWithCookies(url);
@@ -103,6 +149,19 @@ export class ResumeService {
     }
   }
 
+  /**
+   *Выполняет HTTP запрос к HH.ru с cookies пользователя
+   *
+   *@param url - URL для запроса
+   *@returns Promise<HttpFetchResponse> - результат HTTP запроса с HTML и статусом
+   *
+   *Процесс:
+   *1. Получает cookies пользователя через AuthService
+   *2. Выполняет GET запрос с реалистичными заголовками браузера
+   *3. Возвращает структурированный ответ с HTML и метаданными
+   *
+   *Использует axios для HTTP запросов с полным набором заголовков Chrome.
+   */
   private async fetchHtmlWithCookies(url: string): Promise<HttpFetchResponse> {
     try {
       const cookiesResponse = await this.getCookies();
@@ -140,7 +199,21 @@ export class ResumeService {
   }
 
   /**
-   * Анализирует резюме через OpenAI API
+   *Анализирует резюме через OpenAI API
+   *
+   *@param url - URL резюме на HH.ru
+   *@returns Promise<ResumeAnalysisServiceResponse> - результат анализа с извлеченными данными
+   *
+   *Процесс:
+   *1. Получает HTML резюме с HH.ru используя cookies
+   *2. Проверяет доступность OpenAI API
+   *3. Отправляет HTML на анализ в OpenAI
+   *4. Извлекает ID резюме из URL
+   *5. Сохраняет результат в БД с векторным эмбеддингом
+   *6. Возвращает структурированные данные резюме
+   *
+   *HTML не сохраняется в БД, только результат анализа.
+   *Векторный эмбеддинг генерируется для поиска похожих вакансий.
    */
   async analyzeResumeWithAI(
     url: string,
@@ -193,7 +266,15 @@ export class ResumeService {
   }
 
   /**
-   * Анализирует сохраненное резюме по ID
+   *Анализирует сохраненное резюме по ID
+   *
+   *@param resumeId - ID резюме в БД
+   *@returns Promise<SavedResumeAnalysisResponse> - результат операции
+   *
+   *ВНИМАНИЕ: Данный метод не реализован, так как HTML резюме не сохраняется в БД.
+   *Для повторного анализа необходимо использовать analyzeResumeWithAI с URL.
+   *
+   *Возвращает ошибку "НЕ_РЕАЛИЗОВАНО" с соответствующим сообщением.
    */
   async analyzeSavedResume(
     resumeId: string,
@@ -220,7 +301,17 @@ export class ResumeService {
   }
 
   /**
-   * Получает последние данные резюме из файла анализа
+   *Получает последние проанализированные данные резюме из БД
+   *
+   *@returns Promise<LatestResumeDataResponse> - данные последнего проанализированного резюме
+   *
+   *Возвращает:
+   *- Структурированные данные резюме (персональная информация, опыт, навыки)
+   *- Метаданные (ID файла, время загрузки)
+   *- Статус успешности операции
+   *
+   *Ищет последнюю запись в таблице UserResume по дате создания.
+   *Используется для получения актуальных данных резюме для анализа вакансий.
    */
   async getLatestResumeData(): Promise<LatestResumeDataResponse> {
     try {
@@ -250,9 +341,21 @@ export class ResumeService {
   }
 
   /**
-   * Получает структуру сохраненного HTML документа
+   *Сохраняет результат анализа резюме в БД с векторным эмбеддингом
+   *
+   *@param resumeId - ID резюме из URL
+   *@param analysis - результат анализа от OpenAI
+   *@returns Promise<void>
+   *
+   *Процесс:
+   *1. Конвертирует анализ в JSON формат для БД
+   *2. Сохраняет или обновляет запись в таблице UserResume
+   *3. Генерирует векторный эмбеддинг из анализа (best-effort)
+   *4. Обновляет запись с эмбеддингом через raw SQL
+   *
+   *Использует upsert для создания новой записи или обновления существующей.
+   *Эмбеддинг генерируется асинхронно и ошибки игнорируются (best-effort).
    */
-
   private async saveAnalysisToDb(
     resumeId: string,
     analysis: unknown,
