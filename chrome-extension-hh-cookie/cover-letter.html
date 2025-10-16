@@ -88,7 +88,7 @@
         // Получаем URL бэкенда из настроек расширения
         const { backendUrl = "http://localhost:3000" } = await chrome.storage.sync.get("backendUrl");
         
-        const response = await fetch(`${backendUrl}/openai/latest-cover-letter`);
+        const response = await fetch(`${backendUrl}/cover-letter/latest`);
         console.log('Backend response:', response);
         
         if (!response.ok) {

@@ -8,7 +8,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ResumeService } from './resume.service';
-import { REGEX_PATTERNS } from '../config/openai.config';
+import { REGEX_PATTERNS } from '../config/ai.config';
 import { PrismaService } from 'nestjs-prisma';
 import type {
   SaveCookiesRequest,
@@ -84,7 +84,7 @@ export class ResumeController {
    *
    * Возвращает:
    * - Структурированные данные резюме (персональная информация, опыт, навыки)
-   * - Метаданные (ID файла, время загрузки)
+   * - Метаданные (ID резюме, время загрузки)
    * - Статус успешности операции
    */
   @Get('latest')

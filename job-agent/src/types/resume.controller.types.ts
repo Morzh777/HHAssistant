@@ -38,7 +38,7 @@ export interface ResumeAnalysisServiceResponse {
 export interface LatestResumeDataResponse {
   success: boolean;
   data: ResumeAnalysisResult;
-  file: string;
+  resumeId: string;
   loadedAt: string;
 }
 

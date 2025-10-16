@@ -5,7 +5,6 @@ export interface ApiResponse<T = any> {
   message?: string;
   // Дополнительные поля для vacancy-storage
   vacancyId?: string;
-  filename?: string;
   path?: string;
   count?: number;
   vacancies?: T[];

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { EmbeddingsService } from './embeddings.service';
 import { PrismaModule } from '../prisma/prisma.module';
-import { OpenAIModule } from '../openai/openai.module';
+import { AIModule } from '../ai/ai.module';
 
 @Module({
-  imports: [PrismaModule, OpenAIModule],
+  imports: [PrismaModule, AIModule],
   providers: [EmbeddingsService],
   exports: [EmbeddingsService],
 })

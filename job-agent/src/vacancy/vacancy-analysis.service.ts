@@ -1,10 +1,9 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { OpenAIService } from '../openai/openai.service';
+import { AIService } from '../ai/ai.service';
 import {
-  OPENAI_CONFIGS,
   SYSTEM_PROMPTS,
   USER_PROMPTS,
-} from '../config/openai.config';
+} from '../config/ai.config';
 import {
   VacancyAnalysis,
   VacancyAnalysisResponse,
@@ -17,7 +16,7 @@ export class VacancyAnalysisService {
   private readonly logger = new Logger(VacancyAnalysisService.name);
 
   constructor(
-    private readonly openaiService: OpenAIService,
+    private readonly aiService: AIService,
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
   ) {}
@@ -40,9 +39,9 @@ export class VacancyAnalysisService {
 
       const prompt = USER_PROMPTS.VACANCY_ANALYSIS(vacancyData, resumeData);
       const systemPrompt = SYSTEM_PROMPTS.VACANCY_ANALYSIS;
-      const config = OPENAI_CONFIGS.VACANCY_ANALYSIS;
+      const config = this.aiService.getProviderConfig('VACANCY_ANALYSIS');
 
-      const analysisText = await this.openaiService.generateText(
+      const analysisText = await this.aiService.generateText(
         prompt,
         systemPrompt,
         config,
@@ -114,7 +113,7 @@ export class VacancyAnalysisService {
       try {
         if (response.data?.summary) {
           const embText = `${response.data.summary}`;
-          const emb = await this.openaiService.generateEmbedding(embText);
+          const emb = await this.aiService.generateEmbedding(embText);
           const vectorLiteral = `[${emb.map((v) => (Number.isFinite(v) ? Number(v) : 0)).join(',')}]`;
           // eslint-disable-next-line @typescript-eslint/ban-ts-comment
           // @ts-ignore raw SQL update

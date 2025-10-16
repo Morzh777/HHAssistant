@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'nestjs-prisma';
-import { OpenAIService } from '../openai/openai.service';
+import { AIService } from '../ai/ai.service';
 
 @Injectable()
 export class EmbeddingsService {
@@ -8,11 +8,11 @@ export class EmbeddingsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly openai: OpenAIService,
+    private readonly aiService: AIService,
   ) {}
 
   async generate(text: string): Promise<number[]> {
-    return this.openai.generateEmbedding(text);
+    return this.aiService.generateEmbedding(text);
   }
 
   async storeVacancyEmbedding(vacancyId: string, text: string): Promise<void> {

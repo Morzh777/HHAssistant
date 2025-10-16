@@ -1,8 +1,8 @@
-# Job Agent - OpenAI Integration
+# Job Agent - AI Integration
 
 ## Описание
 
-Этот сервис интегрирован с OpenAI API для анализа резюме с сайта hh.ru. Сервис может извлекать структурированную информацию из HTML резюме с помощью ИИ.
+Этот сервис интегрирован с универсальной AI архитектурой для анализа резюме с сайта hh.ru. Сервис поддерживает два AI провайдера (OpenAI, Yandex) с простым переключением через конфигурацию.
 
 ## Установка и настройка
 
@@ -17,44 +17,104 @@ npm install
 Создайте файл `.env` в корне проекта:
 
 ```env
+# Только API ключи (чувствительные данные)
 OPENAI_API_KEY=your_openai_api_key_here
-NODE_ENV=development
+YANDEX_API_KEY=your_yandex_api_key_here
+
+# Database
+DATABASE_URL=postgresql://username:password@localhost:5432/hhapp
 PORT=3000
 ```
 
-### 3. Получение OpenAI API ключа
+### 3. Переключение AI провайдера
 
+Для переключения между провайдерами измените одну строку в `src/config/ai.config.ts`:
+
+```typescript
+// Для OpenAI
+export const DEFAULT_AI_PROVIDER = 'openai' as const;
+
+// Для Yandex
+export const DEFAULT_AI_PROVIDER = 'yandex' as const;
+```
+
+После изменения перезапустите приложение.
+
+### 4. Получение API ключей
+
+#### OpenAI API ключ
 1. Зайдите на [OpenAI Platform](https://platform.openai.com/)
 2. Создайте аккаунт или войдите в существующий
 3. Перейдите в раздел "API Keys"
 4. Создайте новый API ключ
 5. Скопируйте ключ в файл `.env`
 
+#### Yandex API ключ
+1. Зайдите на [Yandex Cloud](https://cloud.yandex.ru/)
+2. Создайте сервисный аккаунт
+3. Назначьте роль `ai.languageModels.user`
+4. Создайте API ключ
+5. Скопируйте ключ в файл `.env`
+
 ## API Endpoints
 
-### Анализ резюме через OpenAI
+### Универсальные AI endpoints
 
+#### Генерация сопроводительного письма
+```http
+POST /ai/generate-cover-letter
+Content-Type: application/json
+
+{
+  "resume": {...},
+  "vacancy": {...},
+  "provider": "openai"  // опционально: "openai", "yandex"
+}
+```
+
+#### Анализ HTML резюме
+```http
+POST /ai/analyze-resume-html
+Content-Type: application/json
+
+{
+  "html": "<html>...</html>",
+  "provider": "yandex"  // опционально
+}
+```
+
+#### Анализ текста резюме
+```http
+POST /ai/analyze-resume-text
+Content-Type: application/json
+
+{
+  "text": "Текст резюме...",
+  "provider": "openai"  // опционально
+}
+```
+
+#### Получение доступных провайдеров
+```http
+GET /ai/providers
+```
+
+#### Проверка доступности API
+```http
+GET /ai/check-availability?provider=openai
+```
+
+### Специализированные endpoints
+
+#### Анализ резюме через URL
 ```http
 GET /resume/analyze?url=https://spb.hh.ru/resume/your-resume-id
 ```
 
-Анализирует резюме по URL и возвращает структурированную информацию.
-
-### Анализ сохраненного резюме
-
+#### Получение последнего резюме
 ```http
-GET /resume/analyze/{resume-id}
+GET /resume/latest
 ```
-
-Анализирует уже сохраненное резюме по его ID.
-
-### Получение структуры резюме
-
-```http
-GET /resume/structure/{resume-id}
-```
-
-Извлекает базовую структуру резюме без использования OpenAI (бесплатно).
 
 ## Структура ответа
 
@@ -114,29 +174,67 @@ GET /resume/structure/{resume-id}
 npm run start:dev
 ```
 
-### 2. Отправка cookies
+### 2. Проверка доступных провайдеров
 
-Сначала отправьте cookies через Chrome extension:
+```bash
+curl "http://localhost:3000/ai/providers"
+```
 
-```http
-POST /auth/cookies
-Content-Type: application/json
-
+Ответ:
+```json
 {
-  "cookies": "your_hh_ru_cookies_here"
+  "success": true,
+  "availableProviders": ["openai", "yandex"],
+  "defaultProvider": "openai",
+  "providers": [
+    {
+      "type": "openai",
+      "name": "Openai",
+      "available": true
+    },
+    {
+      "type": "yandex", 
+      "name": "Yandex",
+      "available": true
+    }
+  ]
 }
 ```
 
-### 3. Анализ резюме
+### 3. Проверка доступности API
 
 ```bash
-curl "http://localhost:3000/resume/analyze?url=https://spb.hh.ru/resume/32f17360ff0e46ee9e0039ed1f715755465a6a"
+curl "http://localhost:3000/ai/check-availability?provider=openai"
 ```
 
-## Файлы
+### 4. Анализ резюме с выбором провайдера
 
-- HTML резюме сохраняются в: `job-agent/data/resumes/`
-- Результаты анализа сохраняются в: `job-agent/data/analysis/`
+```bash
+curl -X POST "http://localhost:3000/ai/analyze-resume-html" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "html": "<html>...</html>",
+    "provider": "yandex"
+  }'
+```
+
+### 5. Генерация сопроводительного письма
+
+```bash
+curl -X POST "http://localhost:3000/ai/generate-cover-letter" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume": {...},
+    "vacancy": {...},
+    "provider": "openai"
+  }'
+```
+
+## Хранение данных
+
+- HTML резюме и результаты анализа сохраняются в PostgreSQL
+- Векторные эмбеддинги сохраняются в pgvector для семантического поиска
+- Все данные доступны через API endpoints
 
 ## Стоимость
 
@@ -156,3 +254,5 @@ curl "http://localhost:3000/resume/analyze?url=https://spb.hh.ru/resume/32f17360
 ## Логирование
 
 Все операции логируются с помощью NestJS Logger. Проверьте консоль для отладки.
+
+

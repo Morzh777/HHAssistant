@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
-import { OpenAIModule } from '../openai/openai.module';
+import { AIModule } from '../ai/ai.module';
 import { EmbeddingsModule } from '../embeddings/embeddings.module';
 import { ResumeModule } from '../resume/resume.module';
 import { VacancyController } from './vacancy.controller';
@@ -11,7 +11,7 @@ import { VacancyStorageService } from './vacancy-storage.service';
 import { VacancyStorageController } from './vacancy-storage.controller';
 
 @Module({
-  imports: [OpenAIModule, PrismaModule, EmbeddingsModule, ResumeModule],
+  imports: [AIModule, PrismaModule, EmbeddingsModule, ResumeModule],
   controllers: [
     VacancyController,
     VacancyAnalysisController,

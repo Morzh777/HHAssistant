@@ -52,7 +52,7 @@ async function generateCoverLetter(resumeData, vacancyData) {
     };
     
     console.log('Sending data to ChatGPT for cover letter generation...');
-    const response = await fetch(`${backendUrl}/openai/generate-cover-letter`, {
+    const response = await fetch(`${backendUrl}/ai/generate-cover-letter`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json" 

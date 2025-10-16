@@ -1,7 +1,7 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
-import { OpenAIService } from '../openai/openai.service';
-import { REGEX_PATTERNS } from '../config/openai.config';
+import { AIService } from '../ai/ai.service';
+import { REGEX_PATTERNS } from '../config/ai.config';
 import { PrismaService } from 'nestjs-prisma';
 import { EmbeddingsService } from '../embeddings/embeddings.service';
 import { AuthService } from '../auth/auth.service';
@@ -57,7 +57,7 @@ export class ResumeService {
   };
 
   constructor(
-    private readonly openaiService: OpenAIService,
+    private readonly aiService: AIService,
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingsService,
     private readonly authService: AuthService,
@@ -232,7 +232,7 @@ export class ResumeService {
       // HTML НЕ сохраняем
 
       // Проверяем доступность OpenAI API
-      const isAvailable = await this.openaiService.checkApiAvailability();
+      const isAvailable = await this.aiService.checkApiAvailability();
       if (!isAvailable) {
         throw new HttpException(
           'OpenAI API недоступен. Проверьте API ключ.',
@@ -241,7 +241,7 @@ export class ResumeService {
       }
 
       // Анализируем полный HTML через OpenAI
-      const analysis = await this.openaiService.analyzeResumeHtml(html);
+      const analysis = await this.aiService.analyzeResumeHtml(html);
 
       // Извлекаем ID резюме из URL для сохранения
       const resumeIdMatch = url.match(REGEX_PATTERNS.RESUME_ID);
@@ -307,7 +307,7 @@ export class ResumeService {
    *
    *Возвращает:
    *- Структурированные данные резюме (персональная информация, опыт, навыки)
-   *- Метаданные (ID файла, время загрузки)
+   *- Метаданные (ID резюме, время загрузки)
    *- Статус успешности операции
    *
    *Ищет последнюю запись в таблице UserResume по дате создания.
@@ -327,7 +327,7 @@ export class ResumeService {
       return {
         success: true,
         data: row.analysisJson as unknown as ResumeAnalysisResult,
-        file: row.resumeId,
+        resumeId: row.resumeId,
         loadedAt: new Date().toISOString(),
       };
     } catch (error: unknown) {

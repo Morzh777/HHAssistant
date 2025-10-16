@@ -5,7 +5,7 @@ import { VacancyModule } from './vacancy/vacancy.module';
 import { VacancyStorageModule } from './vacancy/vacancy-storage.module';
 import { ResumeModule } from './resume/resume.module';
 import { AuthModule } from './auth/auth.module';
-import { OpenAIModule } from './openai/openai.module';
+import { AIModule } from './ai/ai.module';
 import { CoverLetterModule } from './cover-letter/cover-letter.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { EmbeddingsModule } from './embeddings/embeddings.module';
@@ -21,7 +21,7 @@ import { EmbeddingsModule } from './embeddings/embeddings.module';
     VacancyStorageModule,
     ResumeModule, 
     AuthModule, 
-    OpenAIModule,
+    AIModule,
     CoverLetterModule,
     PrismaModule,
     EmbeddingsModule

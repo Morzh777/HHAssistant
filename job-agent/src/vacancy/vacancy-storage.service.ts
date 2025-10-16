@@ -12,7 +12,7 @@ export class VacancyStorageService {
   ) {}
 
   /**
-   * Сохранение вакансии в JSON файл
+   * Сохранение вакансии в БД
    */
   async saveVacancy(vacancyData: Vacancy): Promise<ApiResponse<Vacancy>> {
     try {

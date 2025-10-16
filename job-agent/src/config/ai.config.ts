@@ -1,48 +1,24 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
-export interface OpenAIConfig {
-  model: string;
-  temperature: number;
-  maxTokens?: number;
-  maxCompletionTokens?: number;
-}
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 
-export const OPENAI_CONFIGS = {
-  // Конфигурация для генерации сопроводительных писем
-  COVER_LETTER: {
-    model: 'gpt-5-mini',
-    // GPT-5 mini не поддерживает кастомную температуру, только default (1)
-  } as OpenAIConfig,
+// Импортируем конфигурации из провайдеров
+import {
+  OPENAI_CONFIGS,
+  OPENAI_BASE_URL,
+} from '../ai/providers/openai.provider';
+import {
+  YANDEX_CONFIGS,
+  YANDEX_BASE_URL,
+} from '../ai/providers/yandex.provider';
 
-  // Конфигурация для анализа HTML резюме
-  RESUME_ANALYSIS_HTML: {
-    model: 'gpt-5-mini',
-    // GPT-5 mini не поддерживает кастомную температуру, только default (1)
-  } as OpenAIConfig,
+// Выберите провайдера (меняйте здесь при необходимости)
+export const DEFAULT_AI_PROVIDER = 'openai' as const; // 'openai' или 'yandex'
 
-  // Конфигурация для анализа текста резюме
-  RESUME_ANALYSIS_TEXT: {
-    model: 'gpt-5-mini',
-    // GPT-5 mini не поддерживает кастомную температуру, только default (1)
-  } as OpenAIConfig,
+// Конфигурация активного провайдера
+export const ACTIVE_PROVIDER_CONFIG =
+  DEFAULT_AI_PROVIDER === 'openai' ? OPENAI_CONFIGS : YANDEX_CONFIGS;
 
-  // Конфигурация для проверки API
-  API_CHECK: {
-    model: 'gpt-5-mini',
-    // GPT-5 mini не поддерживает кастомную температуру, только default (1)
-  } as OpenAIConfig,
-
-  // Конфигурация для анализа вакансий на токсичность
-  VACANCY_ANALYSIS: {
-    model: 'gpt-5-mini',
-    // GPT-5 mini не поддерживает кастомную температуру, только default (1)
-  } as OpenAIConfig,
-
-  // Конфигурация для эмбеддингов (pgvector)
-  EMBEDDINGS: {
-    model: 'text-embedding-3-small',
-    temperature: 0,
-  } as OpenAIConfig,
-} as const;
+export const ACTIVE_PROVIDER_URL =
+  DEFAULT_AI_PROVIDER === 'openai' ? OPENAI_BASE_URL : YANDEX_BASE_URL;
 
 // Системные промпты
 export const SYSTEM_PROMPTS = {
@@ -331,44 +307,9 @@ ${resumeData ? `ДАННЫЕ РЕЗЮМЕ КАНДИДАТА (используй
 }`,
 } as const;
 
-// Пути и директории
-export const FILE_PATHS = {
-  COVER_LETTERS_DIR: 'job-agent/data/cover-letters',
-  VACANCIES_DIR: 'job-agent/data/vacancies',
-  RESUMES_DIR: 'job-agent/data/resumes',
-} as const;
-
-// Шаблоны имен файлов
-export const FILE_TEMPLATES = {
-  COVER_LETTER: 'cover_letter_{vacancyId}_{date}.txt',
-  VACANCY: 'vacancy_{vacancyId}_{date}.json',
-  RESUME: '{resumeId}.html',
-} as const;
-
 // Регулярные выражения
 export const REGEX_PATTERNS = {
-  COVER_LETTER_VACANCY_ID: /cover_letter_([^_]+)_/,
-  VACANCY_FILE: /vacancy_([^_]+)_/,
-  FILE_SEPARATOR: /========================/,
   RESUME_ID: /\/resume\/([a-f0-9]+)/,
-} as const;
-
-// Шаблоны содержимого файлов
-export const FILE_CONTENT_TEMPLATES = {
-  COVER_LETTER_HEADER: `СОПРОВОДИТЕЛЬНОЕ ПИСЬМО
-========================
-
-Вакансия: {vacancyName}
-ID вакансии: {vacancyId}
-Дата генерации: {generatedAt}
-Зарплата: {salary}
-
-========================
-
-{coverLetter}
-
-========================
-Сгенерировано с помощью OpenAI API`,
 } as const;
 
 // Константы
